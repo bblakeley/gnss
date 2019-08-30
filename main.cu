@@ -91,7 +91,7 @@ int main (void)
 	int n, nGPUs;
 	// Query number of devices attached to host
 	// cudaGetDeviceCount(&nGPUs);
-	nGPUs=1;
+	nGPUs=2;
 
 	printf("Welcome to the GPU-based Navier-Stokes Solver! Configuration: \n"
 		"Number of GPUs = %d \n "

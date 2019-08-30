@@ -141,10 +141,10 @@ void allocate_memory(){
 		checkCudaErrors( cudaMalloc((void **)&rhs.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 		checkCudaErrors( cudaMalloc((void **)&rhs.sh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 
-		checkCudaErrors( cudaMalloc((void **)&rhs_old.uh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
-		checkCudaErrors( cudaMalloc((void **)&rhs_old.vh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&rhs_old.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&rhs_old.sh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.uh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
+		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.vh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.sh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 
 		checkCudaErrors( cudaMalloc((void **)&temp_advective[n],   sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 		checkCudaErrors( cudaMalloc((void **)&fft.temp[n], 			 	 sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
