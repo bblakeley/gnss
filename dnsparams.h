@@ -4,9 +4,9 @@
 #define TZ 8
 
 // Temporal Jet, following daSilva 2008, PoF
-#define NX 256
-#define NY 256
-#define NZ 256
+#define NX 512
+#define NY 512
+#define NZ 512
 #define NZ2 (NZ/2 + 1)
 #define NN (NX*NY*NZ)
 #define PI (M_PI)
@@ -17,19 +17,19 @@
 #define n_checkpoint 250		// Number of steps to take between saving full 3D fields for checkpointing
 #define n_save2D 100	// Number of timesteps to take between saving 2D slices of field data
 #define n_stats 100		// Number of timesteps to take between calculating stats data
-#define dt .005 	// Timestep
+#define dt .002 	// Timestep
 #define nt 10000		// Total number of timesteps to take in the simulation
-#define H (PI/2.0)
+#define H (PI/4.0)
 #define theta (H/35.0)
 #define nu (H/3200.0)
 #define Re (1.0/nu)
 #define Sc 0.7
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 #define k_fil 6.0								// High-pass filter cutoff for initial condition
-#define SaveLocation "/home/bblakeley/Documents/Research/GNSS/test/tempjetinv002_4H_2000R2_Re3200_filter/%c.%i"
-#define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Isotropic/R2_cuda/%s.2000"
-// #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
-#define StatsLocation "/home/bblakeley/Documents/Research/GNSS/test/tempjetinv002_4H_2000R2_Re3200_filter/stats/%s"
+#define SaveLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv002_8H_0R4_Re3200_filter6/%c.%i"
+#define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R4/%s.0"
+// #define DataLocation "/home/bblakeley/Documents/DNS_Data/R2/%s.0"
+#define StatsLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv002_8H_0R4_Re3200_filter6/stats/%s"
 
 /*
 // Define constants for problem
