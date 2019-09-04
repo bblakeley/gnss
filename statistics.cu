@@ -1747,7 +1747,7 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 	forwardTransform(fft, gpu, vel.s);
 	
 	synchronizeGPUs(nGPUs);			// Synchronize GPUs
-
+*/
 	// Adding together results from all GPUs
 	for(n=1; n<nGPUs; ++n){
 		cudaSetDevice(n);	
@@ -1760,7 +1760,6 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 		stats.chi[0][c] += stats.chi[n][c];
 		stats.area_scalar[0][c] += stats.area_scalar[n][c];
 	}
-*/
 	// "Post-processing" results from kernel calls - Calculating the remaining statistics
 	//calcVrms kernel doesn't actually calculate the RMS velocity - Take square root to get Vrms
 	stats.Vrms[0][c] = sqrt(stats.Vrms[0][c]);

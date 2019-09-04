@@ -14,7 +14,7 @@
 #define LY (2*PI)
 #define LZ (2*PI)
 #define DX (LX/NX)
-#define n_checkpoint 250		// Number of steps to take between saving full 3D fields for checkpointing
+#define n_checkpoint 500		// Number of steps to take between saving full 3D fields for checkpointing
 #define n_save2D 100	// Number of timesteps to take between saving 2D slices of field data
 #define n_stats 100		// Number of timesteps to take between calculating stats data
 #define dt .002 	// Timestep
@@ -25,11 +25,11 @@
 #define Re (1.0/nu)
 #define Sc 0.7
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
-#define k_fil 6.0								// High-pass filter cutoff for initial condition
-#define SaveLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv002_8H_0R4_Re3200_filter6/%c.%i"
+#define k_fil 12.0								// High-pass filter cutoff for initial condition
+#define SaveLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv002_8H_0R4_Re3200_filter12/%c.%i"
 #define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R4/%s.0"
 // #define DataLocation "/home/bblakeley/Documents/DNS_Data/R2/%s.0"
-#define StatsLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv002_8H_0R4_Re3200_filter6/stats/%s"
+#define StatsLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv002_8H_0R4_Re3200_filter12/stats/%s"
 
 /*
 // Define constants for problem
