@@ -133,13 +133,13 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 	// For mixing layer following daSilva and Pereira, 2007 PoF:
 	// Create physical vectors in temporary memory
 	// double x = -(double)LX/2 + (i + start_x)*(double)LX/NX ;
-	double y = -(double)LY/2 + j*(double)LY/NY;
+	// double y = -(double)LY/2 + j*(double)LY/NY;
 	// double z = -(double)LZ/2 + k*(double)NZ/NZ;
 
 	// Initialize scalar field
-	Z[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
+	// Z[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
 
-/*	// For mixing layer used in Blakeley et al., 2019 JoT
+	// For mixing layer used in Blakeley et al., 2019 JoT
   // Create physical vectors in temporary memory
 	double x = (i + start_x) * (double)LX / NX;
 
@@ -149,7 +149,7 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 	}
 	else {
 		Z[idx] = 0.5 * (1 - tanh( (x - 3*PI/2) * LX) );
-	}*/
+	}
 
 
 	return;
@@ -175,7 +175,7 @@ void initializeScalar(gpuinfo gpu, fielddata vel)
 void initializeData(gpuinfo gpu, fftinfo fft, fielddata vel)
 { // Initialize DNS data
 
-	initializeVelocity(gpu, vel);
+	// initializeVelocity(gpu, vel);
 
 	initializeScalar(gpu, vel);
 
@@ -220,7 +220,7 @@ void initializeJet_Superposition(fftinfo fft, gpuinfo gpu, double **wave, fieldd
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
-		velocitySuperpositionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n], 0.002);
+		velocitySuperpositionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n], 0.02);
 		printf("Superimposing Jet velocity profile with isotropic noise...\n");
 	}	
 
@@ -351,7 +351,7 @@ void initializeJet_Convolution(fftinfo fft, gpuinfo gpu, fielddata h_vel, fieldd
 	importData(gpu, h_vel, vel);
 
 	// Scale initial condition to lower value for background noise
-	scaleData(gpu, vel, 0.0002);
+	scaleData(gpu, vel, 0.02);
 
 	// Initialize smooth jet velocity field (hyperbolic tangent profile)
 	initializeVelocity(gpu, rhs);
