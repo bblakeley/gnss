@@ -19,8 +19,6 @@
 #include "cudafuncs.h"
 #include "fftfuncs.h"
 
-#define RAD 1
-
 /*
 __global__
 void surfaceIntegral_kernel(double *F, int w, int h, int d, double ref, double *Q, double *surfInt_Q) {
@@ -1174,163 +1172,42 @@ void calcSurfaceProps(cufftHandle p, cufftHandle invp, double *waveNum, cufftDou
 // 	return;
 // }
 
-__global__
-void surfaceArea_kernel(double *F, int w, int h, int d, double ref, double *SA) {
-	extern __shared__ double s_F[];
-
-	double dFdx, dFdy, dFdz, dChidx, dChidy, dChidz;
-
-	// global indices
-	const int i = blockIdx.x * blockDim.x + threadIdx.x; // column
-	const int j = blockIdx.y * blockDim.y + threadIdx.y; // row
-	const int k = blockIdx.z * blockDim.z + threadIdx.z; // stack
-	if ((i >= w) || (j >= h) || (k >= d)) return;
-	const int idx = flatten(i, j, k, w, h, d);
-	// local width and height
-	const int s_w = blockDim.x + 2 * RAD;
-	const int s_h = blockDim.y + 2 * RAD;
-	const int s_d = blockDim.z + 2 * RAD;
-	// local indices
-	const int s_i = threadIdx.x + RAD;
-	const int s_j = threadIdx.y + RAD;
-	const int s_k = threadIdx.z + RAD;
-	const int s_idx = flatten(s_i, s_j, s_k, s_w, s_h, s_d);
-
-	// Creating arrays in shared memory
-	// Regular cells
-	s_F[s_idx] = F[idx];
-
-	//Halo Cells
-	if (threadIdx.x < RAD) {
-		s_F[flatten(s_i - RAD, s_j, s_k, s_w, s_h, s_d)] =
-			F[flatten(i - RAD, j, k, w, h, d)];
-		s_F[flatten(s_i + blockDim.x, s_j, s_k, s_w, s_h, s_d)] =
-			F[flatten(i + blockDim.x, j, k, w, h, d)];
-	}
-	if (threadIdx.y < RAD) {
-		s_F[flatten(s_i, s_j - RAD, s_k, s_w, s_h, s_d)] =
-			F[flatten(i, j - RAD, k, w, h, d)];
-		s_F[flatten(s_i, s_j + blockDim.y, s_k, s_w, s_h, s_d)] =
-			F[flatten(i, j + blockDim.y, k, w, h, d)];
-	}
-	if (threadIdx.z < RAD) {
-		s_F[flatten(s_i, s_j, s_k - RAD, s_w, s_h, s_d)] =
-			F[flatten(i, j, k - RAD, w, h, d)];
-		s_F[flatten(s_i, s_j, s_k + blockDim.z, s_w, s_h, s_d)] =
-			F[flatten(i, j, k + blockDim.z, w, h, d)];
-	}
-
-	__syncthreads();
-
-	// Boundary Conditions
-	// Making problem boundaries periodic
-	if (i == 0){
-		s_F[flatten(s_i - 1, s_j, s_k, s_w, s_h, s_d)] = 
-			F[flatten(w, j, k, w, h, d)];
-	}
-	if (i == w - 1){
-		s_F[flatten(s_i + 1, s_j, s_k, s_w, s_h, s_d)] =
-			F[flatten(0, j, k, w, h, d)];
-	}
-
-	if (j == 0){
-		s_F[flatten(s_i, s_j - 1, s_k, s_w, s_h, s_d)] = 
-			F[flatten(i, h, k, w, h, d)];
-	}
-	if (j == h - 1){
-		s_F[flatten(s_i, s_j + 1, s_k, s_w, s_h, s_d)] =
-			F[flatten(i, 0, k, w, h, d)];
-	}
-
-	if (k == 0){
-		s_F[flatten(s_i, s_j, s_k - 1, s_w, s_h, s_d)] = 
-			F[flatten(i, j, d, w, h, d)];
-	}
-	if (k == d - 1){
-		s_F[flatten(s_i, s_j, s_k + 1, s_w, s_h, s_d)] =
-			F[flatten(i, j, 0, w, h, d)];
-	}
-
-	// __syncthreads();
-
-	// Calculating dFdx and dFdy
-	// Take derivatives
-
-	dFdx = ( s_F[flatten(s_i + 1, s_j, s_k, s_w, s_h, s_d)] - 
-		s_F[flatten(s_i - 1, s_j, s_k, s_w, s_h, s_d)] ) / (2.0*DX);
-
-	dFdy = ( s_F[flatten(s_i, s_j + 1, s_k, s_w, s_h, s_d)] - 
-		s_F[flatten(s_i, s_j - 1, s_k, s_w, s_h, s_d)] ) / (2.0*DX);
-
-	dFdz = ( s_F[flatten(s_i, s_j, s_k + 1, s_w, s_h, s_d)] - 
-		s_F[flatten(s_i, s_j, s_k - 1, s_w, s_h, s_d)] ) / (2.0*DX);
-
-	__syncthreads();
-
-	// Test to see if z is <= Zst, which sets the value of Chi
-	s_F[s_idx] = (s_F[s_idx] <= ref); 
-
-	// Test Halo Cells to form Chi
-	if (threadIdx.x < RAD) {
-		s_F[flatten(s_i - RAD, s_j, s_k, s_w, s_h, s_d)] = (s_F[flatten(s_i - RAD, s_j, s_k, s_w, s_h, s_d)] <= ref);
-		s_F[flatten(s_i + blockDim.x, s_j, s_k, s_w, s_h, s_d)] = (s_F[flatten(s_i + blockDim.x, s_j, s_k, s_w, s_h, s_d)] <= ref);
-	}
-	if (threadIdx.y < RAD) {
-		s_F[flatten(s_i, s_j - RAD, s_k, s_w, s_h, s_d)] = (s_F[flatten(s_i, s_j - RAD, s_k, s_w, s_h, s_d)] <= ref);
-		s_F[flatten(s_i, s_j + blockDim.y, s_k, s_w, s_h, s_d)] = (s_F[flatten(s_i, s_j + blockDim.y, s_k, s_w, s_h, s_d)] <= ref);
-	}
-	if (threadIdx.z < RAD) {
-		s_F[flatten(s_i, s_j, s_k - RAD, s_w, s_h, s_d)] = (s_F[flatten(s_i, s_j, s_k - RAD, s_w, s_h, s_d)] <= ref);
-		s_F[flatten(s_i, s_j, s_k + blockDim.z, s_w, s_h, s_d)] = (s_F[flatten(s_i, s_j, s_k + blockDim.z, s_w, s_h, s_d)] <= ref);
-	}
-
-	__syncthreads();
-
-	// Take derivatives
-	dChidx = ( s_F[flatten(s_i + 1, s_j, s_k, s_w, s_h, s_d)] - 
-		s_F[flatten(s_i - 1, s_j, s_k, s_w, s_h, s_d)] ) / (2.0*DX);
-
-	dChidy = ( s_F[flatten(s_i, s_j + 1, s_k, s_w, s_h, s_d)] - 
-		s_F[flatten(s_i, s_j - 1, s_k, s_w, s_h, s_d)] ) / (2.0*DX);
+void exchangeHalo_mgpu(gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right){
+	// Exchange halo data
+	int n, idx_s;
+	size_t size;
+	cudaError_t err;
 	
-	dChidz = ( s_F[flatten(s_i, s_j, s_k + 1, s_w, s_h, s_d)] - 
-		s_F[flatten(s_i, s_j, s_k - 1, s_w, s_h, s_d)] ) / (2.0*DX);
+	for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+		size = sizeof(cufftDoubleComplex)*NZ2*NY*RAD;   // Bytes of data to copy, based on stencil radius
+		idx_s = flatten((gpu.nx[n]-RAD),0,0,NX,NY,2*NZ2); // Starting index for data to send to buffer
 
-	__syncthreads();
-
-	// Compute Length contribution for each thread
-	if (dFdx == 0 && dFdy == 0 && dFdz == 0){
-		s_F[s_idx] = 0;
-	}
-	else if (dChidx == 0 && dChidy == 0 && dChidz == 0){
-		s_F[s_idx] = 0;
-	}
-	else{
-		s_F[s_idx] = -(dFdx * dChidx + dFdy * dChidy + dFdz * dChidz) / sqrtf(dFdx * dFdx + dFdy * dFdy + dFdz * dFdz);
-	}
-
-	// __syncthreads();
-
-	// Add length contribution from each thread into block memory
-	if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0){
-		double local_SA = 0.0;
-		for (int q = 1; q <= blockDim.x; ++q) {
-			for (int r = 1; r <= blockDim.y; ++r){
-				for (int s = 1; s <= blockDim.z; ++s){
-					int local_idx = flatten(q, r, s, s_w, s_h, s_d);
-					local_SA += s_F[local_idx];
-				}
-			}
+		// Periodic boundary conditions: right boundary of f[n] goes to left[n+1]
+		if(n==gpu.nGPUs-1){  // Right boundary of domain
+		  checkCudaErrors( cudaMemcpy( left[0], &f[n][idx_s], size, cudaMemcpyDefault) );
 		}
-		__syncthreads();
-		atomicAdd(SA, local_SA*DX*DX*DX);
+		else{ // Interior boundaries
+		  checkCudaErrors( cudaMemcpy( left[n+1], &f[n][idx_s], size, cudaMemcpyDefault) );
+		}
+		// Periodic boundary conditions: left boundary of f[n] goes to right[n+1]
+		if(n==0){   // Left boundary of domain
+		  checkCudaErrors( cudaMemcpy( right[gpu.nGPUs-1], f[0], size, cudaMemcpyDefault) );
+		}
+		else{   // Interior boundaries
+		  checkCudaErrors( cudaMemcpy( right[n-1], f[n], size, cudaMemcpyDefault) );
+		}
 	}
-
+	
+	err = cudaGetLastError();
+	if (err != cudaSuccess) 
+	  printf("Error: %s\n", cudaGetErrorString(err));
+	
 	return;
 }
 
 __global__
-void surfaceArea_kernel_mgpu(const int start_x, const int w, const int h, const int d, double *F, double ref, double *SA) {
+void surfaceArea_kernel_mgpu(const int start_x, const int nx, const int w, const int h, const int d, double *F, double *left, double *right, double ref, double *SA) {
 	extern __shared__ double s_F[];
 
 	double dFdx, dFdy, dFdz, dchidx, dchidy, dchidz;
@@ -1339,8 +1216,9 @@ void surfaceArea_kernel_mgpu(const int start_x, const int w, const int h, const 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x; // column
 	const int j = blockIdx.y * blockDim.y + threadIdx.y; // row
 	const int k = blockIdx.z * blockDim.z + threadIdx.z; // stack
-	if (((i+start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
-	const int idx = flatten(i, j, k, w, h, 2*(d/2+1));
+	if (((i+start_x) >= NX) || (j >= NY) || (k >= NZ)) return;  // Use i+start_x for global domain index
+	const int idx = flatten(i, j, k, w, h, 2*(d/2+1));  // idx is the local index for each GPU (note: w is not used to calculate the index)
+	const int idx_g = flatten(i+start_x, j, k, w, h, 2*(d/2+1));  // global index of domain
 	// local width and height
 	const int s_w = blockDim.x + 2 * RAD;
 	const int s_h = blockDim.y + 2 * RAD;
@@ -1354,14 +1232,14 @@ void surfaceArea_kernel_mgpu(const int start_x, const int w, const int h, const 
 	// Creating arrays in shared memory
 	// Interior cells
 	s_F[s_idx] = F[idx];
-
-	//Halo Cells
+  
+  // Load data into shared memory
 	if (threadIdx.x < RAD) {
-		s_F[flatten(s_i - RAD, s_j, s_k, s_w, s_h, s_d)] =
-			F[flatten(i - RAD, j, k, w, h, 2*(d/2+1))];
-		s_F[flatten(s_i + blockDim.x, s_j, s_k, s_w, s_h, s_d)] =
-			F[flatten(i + blockDim.x, j, k, w, h, 2*(d/2+1))];
-	}
+	  s_F[flatten(s_i - RAD, s_j, s_k, s_w, s_h, s_d)] =
+			  F[flatten(i - RAD, j, k, w, h, 2*(d/2+1))];   // Left boundary of CUDA block
+    s_F[flatten(s_i + blockDim.x, s_j, s_k, s_w, s_h, s_d)] =
+			  F[flatten(i + blockDim.x, j, k, w, h, 2*(d/2+1))];    // Right boundary of CUDA block
+  }
 	if (threadIdx.y < RAD) {
 		s_F[flatten(s_i, s_j - RAD, s_k, s_w, s_h, s_d)] =
 			F[flatten(i, j - RAD, k, w, h, 2*(d/2+1))];
@@ -1377,17 +1255,15 @@ void surfaceArea_kernel_mgpu(const int start_x, const int w, const int h, const 
 
 	__syncthreads();
 
-	// Boundary Conditions
-	// Making problem boundaries periodic
-	if (i == 0){
-		s_F[flatten(s_i - RAD, s_j, s_k, s_w, s_h, s_d)] = 
-			F[flatten(w-1, j, k, w, h, 2*(d/2+1))];
+	// Impose Boundary Conditions
+  if (i == 0){    // Left boundary
+	  s_F[flatten(s_i - 1, s_j, s_k, s_w, s_h, s_d)] = 
+		  left[flatten(0, j, k, w, h, 2*(d/2+1))];
 	}
-	if (i == w - 1){
-		s_F[flatten(s_i + RAD, s_j, s_k, s_w, s_h, s_d)] =
-			F[flatten(0, j, k, w, h, 2*(d/2+1))];
+	if (i == nx - 1){  // Right boundary
+	  s_F[flatten(s_i + 1, s_j, s_k, s_w, s_h, s_d)] =
+		  right[flatten(0, j, k, w, h, 2*(d/2+1))];
 	}
-
 	if (j == 0){
 		s_F[flatten(s_i, s_j - RAD, s_k, s_w, s_h, s_d)] = 
 			F[flatten(i, h-1, k, w, h, 2*(d/2+1))];
@@ -1396,7 +1272,6 @@ void surfaceArea_kernel_mgpu(const int start_x, const int w, const int h, const 
 		s_F[flatten(s_i, s_j + RAD, s_k, s_w, s_h, s_d)] =
 			F[flatten(i, 0, k, w, h, 2*(d/2+1))];
 	}
-
 	if (k == 0){
 		s_F[flatten(s_i, s_j, s_k - RAD, s_w, s_h, s_d)] = 
 			F[flatten(i, j, d-1, w, h, 2*(d/2+1))];
@@ -1461,7 +1336,7 @@ void surfaceArea_kernel_mgpu(const int start_x, const int w, const int h, const 
 		s_F[s_idx] = 0;
 	}
 	else{
-		s_F[s_idx] = -(dFdx * dchidx + dFdy * dchidy + dFdz * dchidz) / sqrtf(dFdx * dFdx + dFdy * dFdy + dFdz * dFdz);
+		s_F[s_idx] = -(dFdx*dchidx + dFdy*dchidy + dFdz*dchidz) / sqrtf(dFdx*dFdx + dFdy*dFdy + dFdz*dFdz);
 	}
 
 	__syncthreads();
@@ -1484,46 +1359,31 @@ void surfaceArea_kernel_mgpu(const int start_x, const int w, const int h, const 
 	return;
 }
 
-void calcSurfaceArea_mgpu(const int c, gpuinfo gpu, cufftDoubleReal **f, double iso, double **Area){
+void calcSurfaceArea_mgpu(const int c, gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right, double iso, double **Area){
 // Function to calculate surface quantities
-	int n;
-
+  int n;
 	cudaError_t err;
-	for(n=0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n);
+	 
+	// Exchange halo data for finite difference stencil
+  exchangeHalo_mgpu(gpu, f, left, right);
 
+	synchronizeGPUs(gpu.nGPUs);			// Synchronize GPUs
+	
+	for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);	
 		// Declare and allocate temporary variables
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 		const size_t smemSize = (TX + 2*RAD)*(TY + 2*RAD)*(TZ + 2*RAD)*sizeof(double);
 
 		// Calculate surface area based on the value of iso
-		surfaceArea_kernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_x[n], NX, NY, NZ, f[n], iso, &Area[n][c]);			// Using 2*NZ2 for z-index due to in-place FFT storage
+		surfaceArea_kernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_x[n], gpu.nx[n], NX, NY, NZ, f[n], left[n], right[n], iso, &Area[n][c]);
 		err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));
 	}
 
 		return;
-
-}
-
-
-void calcSurfaceArea(double *z, double Zst, double *SA){
-// Function to calculate surface quantities
-
-	// Declare and allocate temporary variables
-	const dim3 blockSize(TX, TY, TZ);
-	const dim3 gridSize(divUp(NX, TX), divUp(NY, TY), divUp(NZ, TZ));
-	const size_t smemSize = (TX + 2*RAD)*(TY + 2*RAD)*(TZ + 2*RAD)*sizeof(double);
-
-// Calculate surface area based on Zst
-	surfaceArea_kernel<<<gridSize, blockSize, smemSize>>>(z, NX, NY, 2*NZ2, Zst, SA);
-	cudaError_t err = cudaGetLastError();
-	if (err != cudaSuccess) 
-    printf("Error: %s\n", cudaGetErrorString(err));
-
-	return;
 
 }
 
@@ -1869,9 +1729,9 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 	nGPUs = gpu.nGPUs;	
 
 	synchronizeGPUs(nGPUs);
-	//=============================================================================================
-	// Calculating statistics of turbulent velocity field
-	//=============================================================================================
+//=============================================================================================
+// Calculating statistics of turbulent velocity field
+//=============================================================================================
 	// Statistics for turbulent velocity field
 	// Launch kernels to calculate stats
 	for(n=0; n<nGPUs; ++n){
@@ -1910,23 +1770,25 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 	// calcSpectra_mgpu(c, gpu, fft, wave, vel, stats);
 
 	synchronizeGPUs(nGPUs);
-	//=============================================================================================
-	// Post-processing for surface area, etc.
-	//=============================================================================================
+//=============================================================================================
+// Post-processing for surface area, etc.
+//=============================================================================================
 	// Transform scalar field to physical domain
-	//inverseTransform(fft, gpu, vel.sh);
+	inverseTransform(fft, gpu, vel.sh);
 
 	double iso = 0.5;
-	//calcSurfaceArea(vel.s[0],iso,&stats.area_scalar[0][c]);
-	//calcSurfaceArea_mgpu(c, gpu, vel.s, iso, stats.area_scalar);
+  // Calculate surface area of scalar field
+  calcSurfaceArea_mgpu(c, gpu, vel.s, vel.left, vel.right, iso, stats.area_scalar);
+  
+  synchronizeGPUs(nGPUs);			// Synchronize GPUs
 
-	//forwardTransform(fft, gpu, vel.s);
+	forwardTransform(fft, gpu, vel.s);
 	
-	//synchronizeGPUs(nGPUs);			// Synchronize GPUs
+	synchronizeGPUs(nGPUs);			// Synchronize GPUs
 
-	//=============================================================================================
-	// Collecting results from all GPUs
-	//=============================================================================================
+//=============================================================================================
+// Collecting results from all GPUs
+//=============================================================================================
 
 	// Adding together results from all GPUs
 	for(n=1; n<nGPUs; ++n){

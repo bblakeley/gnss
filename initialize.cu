@@ -104,7 +104,6 @@ void initializeVelocityKernel_mgpu(int start_x, cufftDoubleReal *f1, cufftDouble
 	return;
 }
 
-
 void initializeVelocity(gpuinfo gpu, fielddata vel)
 {
 	int n;
@@ -133,12 +132,12 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 	// For mixing layer following daSilva and Pereira, 2007 PoF:
 	// Create physical vectors in temporary memory
 	// double x = -(double)LX/2 + (i + start_x)*(double)LX/NX ;
-	// double y = -(double)LY/2 + j*(double)LY/NY;
+	double y = -(double)LY/2 + j*(double)LY/NY;
 	// double z = -(double)LZ/2 + k*(double)NZ/NZ;
 
 	// Initialize scalar field
-	// Z[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
-
+	Z[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
+/*
 	// For mixing layer used in Blakeley et al., 2019 JoT
   // Create physical vectors in temporary memory
 	double x = (i + start_x) * (double)LX / NX;
@@ -150,7 +149,7 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 	else {
 		Z[idx] = 0.5 * (1 - tanh( (x - 3*PI/2) * LX) );
 	}
-
+*/
 
 	return;
 }
@@ -220,7 +219,7 @@ void initializeJet_Superposition(fftinfo fft, gpuinfo gpu, double **wave, fieldd
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
-		velocitySuperpositionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n], 0.02);
+		velocitySuperpositionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n], 0.2);
 		printf("Superimposing Jet velocity profile with isotropic noise...\n");
 	}	
 

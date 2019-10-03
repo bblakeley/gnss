@@ -2,7 +2,7 @@
 #define TX 8
 #define TY 8
 #define TZ 8
-
+/*
 // Temporal Jet, following daSilva 2008, PoF
 #define NX 512
 #define NY 512
@@ -26,12 +26,12 @@
 #define Sc 0.7
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 #define k_fil 96.0								// High-pass filter cutoff for initial condition
-#define SaveLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv02_8H_0R4_Re3200_filter96/%c.%i"
+#define SaveLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv2_8H_0R4_Re3200_filter96/%c.%i"
 #define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R4/%s.0"
 // #define DataLocation "/home/bblakeley/Documents/DNS_Data/R2/%s.0"
-#define StatsLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv02_8H_0R4_Re3200_filter96/stats/%s"
+#define StatsLocation "/home/bblakeley/Documents/GNSS/test/tempjetinv2_8H_0R4_Re3200_filter96/stats/%s"
+*/
 
-/*
 // Define constants for problem
 #define NX 256
 #define NY 256
@@ -45,7 +45,7 @@
 #define DX (LX/NX)
 #define n_checkpoint 1000		// Number of steps to take between saving full 3D fields for checkpointing
 #define n_save2D 100	// Number of timesteps to take between saving 2D slices of field data
-#define n_stats 20		// Number of timesteps to take between calculating stats data
+#define n_stats 100		// Number of timesteps to take between calculating stats data
 #define dt .000817653	// Timestep
 #define nt 3000		// Total number of timesteps to take in the simulation
 #define Re 100
@@ -59,7 +59,8 @@
 #define H (PI/3.0)
 #define theta (H/35.0)
 #define k_fil 12.0
-*/
+#define RAD 1 // Radius of finite difference stencil for area calculations
+
 /*
 // Define constants for problem
 #define NX 512

@@ -43,6 +43,8 @@ typedef struct fielddata{
 	cufftDoubleComplex **vh;			// v_hat - v component of field in Fourier Space
 	cufftDoubleComplex **wh;			// w_hat - w component of field in Fourier Space
 	cufftDoubleComplex **sh;			// s_hat - scalar field in Fourier Space
+	cufftDoubleReal **left;    // Halo data on left boundary
+	cufftDoubleReal **right;   // Halo data on right boundary 
 }fielddata;
 
 typedef struct gridinfo{

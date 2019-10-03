@@ -5,12 +5,12 @@
 
 int divUp(int a, int b) { return (a + b - 1) / b; }
 
-extern "C" __device__
+extern "C" __host__ __device__
 int idxClip(int idx, int idxMax){
 	return idx > (idxMax - 1) ? (idxMax - 1) : (idx < 0 ? 0 : idx);
 }
 
-extern "C" __device__
+extern "C" __host__ __device__
 int flatten(int col, int row, int stack, int width, int height, int depth){
 	return idxClip(stack, depth) + idxClip(row, height)*depth + idxClip(col, width)*depth*height;
 	// Note: using column-major indexing format

@@ -78,6 +78,8 @@ void allocate_memory(){
 	cudaHostAlloc((void**)&vel.vh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&vel.wh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&vel.sh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
+	cudaHostAlloc((void**)&vel.left, 	 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
+	cudaHostAlloc((void**)&vel.right,  nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 
 	// cudaHostAlloc((void**)&vel.u, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	// cudaHostAlloc((void**)&vel.v, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
@@ -131,10 +133,12 @@ void allocate_memory(){
 		checkCudaErrors( cudaMalloc((void **)&k[n], sizeof(double)*NX ) );
 
 		// Allocate memory for velocity fields
-		checkCudaErrors( cudaMalloc((void **)&vel.uh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
-		checkCudaErrors( cudaMalloc((void **)&vel.vh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&vel.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&vel.sh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&vel.uh[n],    sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
+		checkCudaErrors( cudaMalloc((void **)&vel.vh[n],    sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&vel.wh[n],    sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&vel.sh[n],    sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&vel.left[n],  sizeof(cufftDoubleComplex)*RAD*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&vel.right[n], sizeof(cufftDoubleComplex)*RAD*NY*NZ2) );
 
 		checkCudaErrors( cudaMalloc((void **)&rhs.uh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
 		checkCudaErrors( cudaMalloc((void **)&rhs.vh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
