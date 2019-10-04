@@ -44,6 +44,24 @@ void organizeData_coalesced(cufftDoubleComplex *in, cufftDoubleComplex *out, int
 	return;
 }
 
+__global__ 
+void organizeData_2d(cufftDoubleComplex *in, cufftDoubleComplex *out, int N, int j)
+{// Function to grab non-contiguous chunks of data and make them contiguous
+
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int k = blockIdx.y * blockDim.y + threadIdx.y;
+	if(i >= N || k >= NZ2) return;
+
+
+
+		// printf("For thread %d, indexing begins at local index of %d, which maps to temp at location %d\n", k, (k+ NZ*j), k);
+		out[k + i*NZ2] = in[k + NZ2*j + i*NY*NZ2];
+
+
+
+	return;
+}
+
 void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex **dst, cufftDoubleComplex **temp)
 {   // Transpose x and y directions (for a z-contiguous 1d array distributed across multiple GPUs)
 	// This function loops through GPUs to do the transpose. Requires extra conversion to calculate the local index at the source location.
@@ -57,6 +75,28 @@ void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex
 	// }
 
    
+//	for(j=0; j<NY; ++j){
+//		for(n=0; n<gpu.nGPUs; ++n){
+//			cudaSetDevice(n); 
+
+//			// Determine which GPU to send data to based on y-index, j
+//			dstNum = (j*gpu.nGPUs)/NY;
+//			// printf("dstNum = %d\n",dstNum);
+
+//			// Open kernel that grabs all data 
+//			// organizeData<<<divUp(NZ2,TX), TX>>>(src[n], temp[n], NX/gpu.nGPUs, j);
+//			// organizeData_coalesced<<<divUp(NX/gpu.nGPUs,TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
+//			organizeData_coalesced<<<divUp(gpu.nx[n],TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
+
+//			// local_idx_dst = n*NX/gpu.nGPUs*NZ2 + (j - dstNum*NY/gpu.nGPUs)*NZ2*NX;
+//			local_idx_dst = gpu.start_x[n]*NZ2 + (j - gpu.start_y[dstNum])*NZ2*NX;
+//			// printf("For j = %d, GPU = %d, the local idx at destination = %d \n",j,gpu.gpunum[n], local_idx_dst);
+
+//			checkCudaErrors( cudaMemcpyAsync(&dst[dstNum][local_idx_dst], temp[n], sizeof(cufftDoubleComplex)*NZ2*gpu.nx[n], cudaMemcpyDefault) );
+//			// printf("Offending values: dstNum = %d, local index = %d \n",dstNum, local_idx_dst);
+//		}
+//	}
+
 	for(j=0; j<NY; ++j){
 		for(n=0; n<gpu.nGPUs; ++n){
 			cudaSetDevice(n); 
@@ -65,10 +105,12 @@ void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex
 			dstNum = (j*gpu.nGPUs)/NY;
 			// printf("dstNum = %d\n",dstNum);
 
-			// Open kernel that grabs all data 
-			// organizeData<<<divUp(NZ2,TX), TX>>>(src[n], temp[n], NX/gpu.nGPUs, j);
-			// organizeData_coalesced<<<divUp(NX/gpu.nGPUs,TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
-			organizeData_coalesced<<<divUp(gpu.nx[n],TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
+      const dim3 blockSize(TX, TZ, 1);
+		  const dim3 gridSize(divUp(NX, TX), divUp(NZ2, TZ), 1);
+		  // Open kernel that grabs all data 
+		  organizeData_2d<<<gridSize,blockSize>>>(src[n], temp[n], gpu.nx[n], j);
+			
+			//organizeData_coalesced<<<divUp(gpu.nx[n],TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
 
 			// local_idx_dst = n*NX/gpu.nGPUs*NZ2 + (j - dstNum*NY/gpu.nGPUs)*NZ2*NX;
 			local_idx_dst = gpu.start_x[n]*NZ2 + (j - gpu.start_y[dstNum])*NZ2*NX;
@@ -87,7 +129,7 @@ void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex
 //==============================================================================
 
 void plan2dFFT(gpuinfo gpu, fftinfo fft){
-// This function plans a 2-dimensional FFT to operate on the X and Y directions (assumes X-direction is contiguous in memory)
+// This function plans a 2-dimensional FFT to operate on the Z and Y directions (assumes Z-direction is contiguous in memory)
 	int result;
 
 	int n;
@@ -103,7 +145,6 @@ void plan2dFFT(gpuinfo gpu, fftinfo fft){
 	  int ostride = 1;
 	  int idist = NY*2*NZ2;                      // idist is the total length of one signal
 	  int odist = NY*NZ2;
-	  // int batch = NX_per_GPU[n];                        // # of 2D FFTs to perform
 	  int batch = gpu.nx[n];                        // # of 2D FFTs to perform
 
 	  // Create empty plan handles
@@ -159,7 +200,7 @@ void plan2dFFT(gpuinfo gpu, fftinfo fft){
 }
 
 void plan1dFFT(int nGPUs, fftinfo fft){
-// This function plans a 1-dimensional FFT to operate on the Z direction (assuming Z-direction is contiguous in memory)
+// This function plans a 1-dimensional FFT to operate on the X direction (for X-direction not contiguous in memory, offset by Z-dimension)
     int result;
 
     int n;

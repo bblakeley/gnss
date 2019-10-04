@@ -45,9 +45,9 @@
 #define DX (LX/NX)
 #define n_checkpoint 1000		// Number of steps to take between saving full 3D fields for checkpointing
 #define n_save2D 100	// Number of timesteps to take between saving 2D slices of field data
-#define n_stats 20		// Number of timesteps to take between calculating stats data
+#define n_stats 5		// Number of timesteps to take between calculating stats data
 #define dt .000817653	// Timestep
-#define nt 20		// Total number of timesteps to take in the simulation
+#define nt 5		// Total number of timesteps to take in the simulation
 #define Re 100
 #define nu (1.0/Re)
 #define Sc 0.7
