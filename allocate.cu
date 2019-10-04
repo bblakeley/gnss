@@ -13,8 +13,7 @@ void allocate_memory(){
 	// // Declare extern variables (to pull def's from declare.h)
 	extern gpuinfo gpu;	
 	extern fftinfo fft;
-	extern statistics h_stats;
-	extern statistics stats;	
+	extern statistics *stats;	
 
   extern double **k;
 
@@ -46,31 +45,6 @@ void allocate_memory(){
 	h_vel.w = (double **)malloc(sizeof(double *)*nGPUs);
 	h_vel.s = (double **)malloc(sizeof(double *)*nGPUs);
 
-	// Declare struct for holding statistics on the host
-	// &h_stats = malloc(sizeof(statistics));
-	// Allocate memory on host for statistics
-	h_stats.Vrms    			= (double **)malloc(sizeof(double *));
-	h_stats.KE      			= (double **)malloc(sizeof(double *));
-	h_stats.epsilon 			= (double **)malloc(sizeof(double *));
-	h_stats.eta     			= (double **)malloc(sizeof(double *));
-	h_stats.l      		 		= (double **)malloc(sizeof(double *));
-	h_stats.lambda 				= (double **)malloc(sizeof(double *));
-	h_stats.chi   			  = (double **)malloc(sizeof(double *));
-	h_stats.area_scalar  	= (double **)malloc(sizeof(double *));
-	h_stats.area_tnti	  	= (double **)malloc(sizeof(double *));
-	h_stats.energy_spect	= (double **)malloc(sizeof(double *));
-
-	h_stats.Vrms[0]    			= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.KE[0]      			= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.epsilon[0] 			= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.eta[0]     			= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.l[0]      		 		= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.lambda[0] 				= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.chi[0]   			  = (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.area_scalar[0]  	= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.area_tnti[0]	  	= (double *)malloc(sizeof(double)*(nt/n_stats+1));
-	h_stats.energy_spect[0]		= (double *)malloc(sizeof(double)*(nt/n_stats+1)*NX/2);
-
 	// Allocate pinned memory on the host side that stores array of pointers
 	cudaHostAlloc((void**)&k, nGPUs*sizeof(double *), cudaHostAllocMapped);
 
@@ -81,45 +55,20 @@ void allocate_memory(){
 	cudaHostAlloc((void**)&vel.left, 	 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&vel.right,  nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 
-	// cudaHostAlloc((void**)&vel.u, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&vel.v, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&vel.w, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&vel.s, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-
 	cudaHostAlloc((void**)&rhs.uh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&rhs.vh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&rhs.wh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&rhs.sh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-
-	// cudaHostAlloc((void**)&rhs.u, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&rhs.v, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&rhs.w, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&rhs.s, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 
 	cudaHostAlloc((void**)&rhs_old.uh, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&rhs_old.vh, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&rhs_old.wh, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&rhs_old.sh, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 
-	// cudaHostAlloc((void**)&rhs_old.u, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&rhs_old.v, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&rhs_old.w, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	// cudaHostAlloc((void**)&rhs_old.s, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-
 	cudaHostAlloc((void**)&temp_advective, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
 	
 	// For statistics
-	// cudaHostAlloc((void**)&stats, sizeof(stats), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.Vrms,    nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.KE,      nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.epsilon, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.eta,     nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.l,       nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.lambda,  nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.chi,     nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.area_scalar,     nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.area_tnti,     nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&stats.energy_spect,     nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
+	cudaHostAlloc(&stats, nGPUs*sizeof(statistics *), cudaHostAllocMapped);
 
 	// Allocate memory for arrays
 	for (n = 0; n<nGPUs; ++n){
@@ -145,26 +94,17 @@ void allocate_memory(){
 		checkCudaErrors( cudaMalloc((void **)&rhs.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 		checkCudaErrors( cudaMalloc((void **)&rhs.sh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 
-		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.uh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
-		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.vh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-		checkCudaErrors( cudaMallocManaged((void **)&rhs_old.sh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&rhs_old.uh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
+		checkCudaErrors( cudaMalloc((void **)&rhs_old.vh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&rhs_old.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&rhs_old.sh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 
 		checkCudaErrors( cudaMalloc((void **)&temp_advective[n],   sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 		checkCudaErrors( cudaMalloc((void **)&fft.temp[n], 			 	 sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 		checkCudaErrors( cudaMalloc((void **)&fft.temp_reorder[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NZ2) );
 		
 		// Statistics
-		checkCudaErrors( cudaMallocManaged((void **)&stats.Vrms[n],    			sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.KE[n],      			sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.epsilon[n], 			sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.eta[n],     			sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.l[n],       			sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.lambda[n], 		  sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.chi[n],     			sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.area_scalar[n],  sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.area_tnti[n],  	sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMallocManaged((void **)&stats.energy_spect[n], sizeof(double)*(nt/n_stats+1)*NX/2) );
+		checkCudaErrors( cudaMallocManaged( (void **)&stats[n], sizeof(statistics) ));
 
 		printf("Data allocated on Device %d\n", n);
 	}
@@ -207,17 +147,112 @@ void allocate_memory(){
 		checkCudaErrors( cudaMemset(rhs_old.s[n], 0, sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 
 		checkCudaErrors( cudaMemset(temp_advective[n], 0, sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-
-		checkCudaErrors( cudaMemset(stats.Vrms[n], 				0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.KE[n], 					0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.epsilon[n], 		0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.eta[n], 				0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.l[n], 					0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.lambda[n], 			0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.chi[n], 				0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.area_scalar[n], 0, sizeof(double)*(nt/n_stats+1)) );
-		checkCudaErrors( cudaMemset(stats.area_tnti[n],	  0, sizeof(double)*(nt/n_stats+1)) );
 	}
+
+	return;
+}
+
+
+void deallocate_memory(){
+	int n, nGPUs;
+	// // Declare extern variables (to pull def's from declare.h)
+	extern gpuinfo gpu;	
+	extern fftinfo fft;
+	extern statistics h_stats;
+	extern statistics *stats;	
+
+  extern double **k;
+
+  extern fielddata h_vel;
+  extern fielddata vel;
+  extern fielddata rhs;
+  extern fielddata rhs_old;
+
+	extern cufftDoubleComplex **temp_advective;
+
+	// Make local copy of number of GPUs (for readability)
+	nGPUs = gpu.nGPUs;
+
+	// Deallocate GPU memory
+	for(n = 0; n<nGPUs; ++n){
+		cudaSetDevice(n);
+
+		cudaFree(fft.temp[n]);
+		cudaFree(fft.temp_reorder[n]);
+   	cudaFree(fft.wspace[n]);
+
+		cudaFree(k[n]);
+
+		free(h_vel.u[n]);
+		free(h_vel.v[n]);
+		free(h_vel.w[n]);
+		free(h_vel.s[n]);
+
+		cudaFree(vel.u[n]);
+		cudaFree(vel.v[n]);
+		cudaFree(vel.w[n]);
+		cudaFree(vel.s[n]);
+
+		cudaFree(rhs.u[n]);
+		cudaFree(rhs.v[n]);
+		cudaFree(rhs.w[n]);
+		cudaFree(rhs.s[n]);
+
+		cudaFree(rhs_old.u[n]);
+		cudaFree(rhs_old.v[n]);
+		cudaFree(rhs_old.w[n]);
+		cudaFree(rhs_old.s[n]);
+
+		cudaFree(temp_advective[n]);
+
+		cudaFree(&stats[n]);
+
+		// Destroy cufft plans
+		cufftDestroy(fft.p1d[n]);
+		cufftDestroy(fft.p2d[n]);
+		cufftDestroy(fft.invp2d[n]);
+	}
+	
+	// Deallocate pointer arrays on host memory
+	cudaFreeHost(gpu.gpunum);
+	cudaFreeHost(gpu.ny);
+	cudaFreeHost(gpu.nx);
+	cudaFreeHost(gpu.start_x);
+	cudaFreeHost(gpu.start_y);
+
+	cudaFreeHost(k);
+
+	cudaFreeHost(temp_advective);
+
+	cudaFreeHost(fft.wsize_f);
+	cudaFreeHost(fft.wsize_i);
+	cudaFreeHost(fft.wspace);
+	cudaFreeHost(fft.temp);
+	cudaFreeHost(fft.temp_reorder);
+	cudaFreeHost(&fft);
+
+	cudaFreeHost(vel.uh);
+	cudaFreeHost(vel.vh);
+	cudaFreeHost(vel.wh);
+	cudaFreeHost(vel.sh);
+
+	cudaFreeHost(rhs.uh);
+	cudaFreeHost(rhs.vh);
+	cudaFreeHost(rhs.wh);
+	cudaFreeHost(rhs.sh);
+
+	cudaFreeHost(rhs_old.uh);
+	cudaFreeHost(rhs_old.vh);
+	cudaFreeHost(rhs_old.wh);
+	cudaFreeHost(rhs_old.sh);
+
+	cudaFreeHost(stats);
+
+	// Deallocate memory on CPU
+	free(h_vel.u);
+	free(h_vel.v);
+	free(h_vel.w);
+	free(h_vel.s);
 
 	return;
 }

@@ -42,7 +42,6 @@ void hpFilter(gpuinfo gpu, fftinfo fft, double **k, fielddata vel)
 	forwardTransform(fft, gpu, vel.v);
 	forwardTransform(fft, gpu, vel.w);
 
-
 	int n;
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
@@ -114,7 +113,7 @@ void initializeVelocity(gpuinfo gpu, fielddata vel)
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
 		initializeVelocityKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n]);
-		printf("Data initialized on GPU #%d...\n",n);
+		printf("Velocity initialized on GPU #%d...\n",n);
 	}
 
 	return;
@@ -164,7 +163,7 @@ void initializeScalar(gpuinfo gpu, fielddata vel)
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
 		initializeScalarKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.s[n]);
-		printf("Data initialized on GPU #%d...\n",n);
+		printf("Scalar field initialized on GPU #%d...\n",n);
 	}
 
 	return;

@@ -18,6 +18,7 @@
 #include "statistics.h"
 #include "cudafuncs.h"
 #include "fftfuncs.h"
+#include "iofuncs.h"
 
 /*
 __global__
@@ -1217,7 +1218,7 @@ void surfaceArea_kernel_mgpu(const int start_x, const int nx, const int w, const
 	const int j = blockIdx.y * blockDim.y + threadIdx.y; // row
 	const int k = blockIdx.z * blockDim.z + threadIdx.z; // stack
 	if (((i+start_x) >= NX) || (j >= NY) || (k >= NZ)) return;  // Use i+start_x for global domain index
-	const int idx = flatten(i, j, k, w, h, 2*(d/2+1));  // idx is the local index for each GPU (note: w is not used to calculate the index)
+	const int idx = flatten(i, j, k, nx, h, 2*(d/2+1));  // idx is the local index for each GPU (note: w is not used to calculate the index)
 	const int idx_g = flatten(i+start_x, j, k, w, h, 2*(d/2+1));  // global index of domain
 	// local width and height
 	const int s_w = blockDim.x + 2 * RAD;
@@ -1359,7 +1360,7 @@ void surfaceArea_kernel_mgpu(const int start_x, const int nx, const int w, const
 	return;
 }
 
-void calcSurfaceArea_mgpu(const int c, gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right, double iso, double **Area){
+void calcSurfaceArea_mgpu(gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right, double iso, statistics *stats){
 // Function to calculate surface quantities
   int n;
 	cudaError_t err;
@@ -1377,7 +1378,7 @@ void calcSurfaceArea_mgpu(const int c, gpuinfo gpu, cufftDoubleReal **f, cufftDo
 		const size_t smemSize = (TX + 2*RAD)*(TY + 2*RAD)*(TZ + 2*RAD)*sizeof(double);
 
 		// Calculate surface area based on the value of iso
-		surfaceArea_kernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_x[n], gpu.nx[n], NX, NY, NZ, f[n], left[n], right[n], iso, &Area[n][c]);
+		surfaceArea_kernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_x[n], gpu.nx[n], NX, NY, NZ, f[n], left[n], right[n], iso, &stats[n].area_scalar);
 		err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));
@@ -1697,29 +1698,29 @@ void calcEnergySpectraKernel_mgpu(int start_y, double *wave, cufftDoubleComplex 
 
 void calcSpectra_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, statistics stats)
 { // Calculate sperical energy and scalar spectra
-	int n;
+//	int n;
 
-	// Loop over GPUs to call kernels
-	for(n=0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n);
+//	// Loop over GPUs to call kernels
+//	for(n=0; n<gpu.nGPUs; ++n){
+//		cudaSetDevice(n);
 
-		// Set thread and block dimensions for kernal calls
-		const dim3 blockSize(TX, TY, TZ);
-		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
-		// const size_t smemSize = TX*TY*TZ*sizeof(double);
-		cudaError_t err;
+//		// Set thread and block dimensions for kernal calls
+//		const dim3 blockSize(TX, TY, TZ);
+//		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
+//		// const size_t smemSize = TX*TY*TZ*sizeof(double);
+//		cudaError_t err;
 
-		// Call kernels to calculate spherical energy spectra
-		calcEnergySpectraKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats.energy_spect[n][c]);
-		err = cudaGetLastError();
-		if (err != cudaSuccess) 
-	    printf("Error: %s\n", cudaGetErrorString(err));
-	}
+//		// Call kernels to calculate spherical energy spectra
+//		calcEnergySpectraKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].energy_spect);
+//		err = cudaGetLastError();
+//		if (err != cudaSuccess) 
+//	    printf("Error: %s\n", cudaGetErrorString(err));
+//	}
 
 	return;
 }
 
-void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, statistics stats)
+void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, statistics *stats)
 {// Function to call a cuda kernel that calculates the relevant turbulent statistics
 
 	// Synchronize GPUs before calculating statistics
@@ -1727,6 +1728,20 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 
 	// Make local copy of number of GPUs (for readability)
 	nGPUs = gpu.nGPUs;	
+
+	// Initialize all statistics to 0
+	for (n = 0; n<nGPUs; ++n){
+	  stats[n].Vrms         = 0.0;
+	  stats[n].KE           = 0.0;
+	  stats[n].epsilon      = 0.0;
+	  stats[n].eta          = 0.0;
+	  stats[n].l            = 0.0;
+	  stats[n].lambda       = 0.0;
+	  stats[n].chi          = 0.0;
+	  stats[n].area_scalar  = 0.0;
+	  stats[n].area_tnti    = 0.0;
+	  stats[n].energy_spect = 0.0;
+	}
 
 	synchronizeGPUs(nGPUs);
 //=============================================================================================
@@ -1744,22 +1759,22 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 		cudaError_t err;
 
 		// Call kernels to calculate turbulence statistics
-		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats.Vrms[n][c], &stats.KE[n][c]);
+		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].Vrms, &stats[n].KE);
 		err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));
 
-		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats.epsilon[n][c]);
+		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].epsilon);
 		err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));
 
-		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats.l[n][c]);
+		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].l);
 		err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));
 
-		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.sh[n], &stats.chi[n][c]);
+		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.sh[n], &stats[n].chi);
 		err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));
@@ -1778,7 +1793,7 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 
 	double iso = 0.5;
   // Calculate surface area of scalar field
-  calcSurfaceArea_mgpu(c, gpu, vel.s, vel.left, vel.right, iso, stats.area_scalar);
+  calcSurfaceArea_mgpu(gpu, vel.s, vel.left, vel.right, iso, stats);
   
   synchronizeGPUs(nGPUs);			// Synchronize GPUs
 
@@ -1793,21 +1808,23 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 	// Adding together results from all GPUs
 	for(n=1; n<nGPUs; ++n){
 		cudaSetDevice(n);	
-		cudaDeviceSynchronize();
 
-		stats.KE[0][c] += stats.KE[n][c];
-		stats.Vrms[0][c] += stats.Vrms[n][c];
-		stats.epsilon[0][c] += stats.epsilon[n][c];
-		stats.l[0][c] += stats.l[n][c];
-		stats.chi[0][c] += stats.chi[n][c];
-		stats.area_scalar[0][c] += stats.area_scalar[n][c];
+		stats[0].KE += stats[n].KE;   // No memcopy required because they are managed arrays
+		stats[0].Vrms += stats[n].Vrms;
+		stats[0].epsilon += stats[n].epsilon;
+		stats[0].l += stats[n].l;
+		stats[0].chi += stats[n].chi;
+		stats[0].area_scalar += stats[n].area_scalar;
 	}
 	// "Post-processing" results from kernel calls - Calculating the remaining statistics
 	//calcVrms kernel doesn't actually calculate the RMS velocity - Take square root to get Vrms
-	stats.Vrms[0][c] = sqrt(stats.Vrms[0][c]);
-	stats.lambda[0][c] = sqrt( 15.0*nu*stats.Vrms[0][c]*stats.Vrms[0][c]/stats.epsilon[0][c] );
-	stats.eta[0][c] = sqrt(sqrt(nu*nu*nu/stats.epsilon[0][c]));
-	stats.l[0][c] = 3*PI/4*stats.l[0][c]/stats.KE[0][c];
+	stats[0].Vrms = sqrt(stats[0].Vrms);
+	stats[0].lambda = sqrt( 15.0*nu*stats[0].Vrms*stats[0].Vrms/stats[0].epsilon );
+	stats[0].eta = sqrt(sqrt(nu*nu*nu/stats[0].epsilon));
+	stats[0].l = 3*PI/4*stats[0].l/stats[0].KE;
+	
+	// Save data to HDD
+	saveStatsData(c, stats[0] );    // Using 0 index to send aggregate data collected in first index
 	
 	return;
 }

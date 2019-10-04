@@ -48,16 +48,21 @@ void writeDouble(double v, FILE *f)  {
 	return;
 }
 
-void writeStats( const char* name, double *in) {
-	int i;
+void writeStats(const int c, const char* name, double in) {
 	char title[0x100];
+	FILE *out;
+	
 	snprintf(title, sizeof(title), StatsLocation, name);
 	printf("Writing data to %s \n", title);
-	FILE *out = fopen(title, "wb");
-	for (i = 0; i <= nt/n_stats; ++i){
-		writeDouble(in[i], out);
+	if(c==0){ // First timestep, create new file
+	  out = fopen(title, "wb");
+	}
+	else{ // append current timestep data to statistics file
+	  out = fopen(title, "ab");
 	}
 	
+	writeDouble(in, out);
+		
 	fclose(out);
 }
 
@@ -98,13 +103,15 @@ void write3Dfields_mgpu(gpuinfo gpu, const int iter, const char var, double **in
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NX*NY*NZ, out);
 	// writelu(sizeof(double) * NX*NY*NZ, out);
+	k=0;
 	for (n = 0; n < gpu.nGPUs; ++n){
 		for (i = 0; i < gpu.nx[n]; ++i){
 			for (j = 0; j < NY; ++j){
-				for (k = 0; k < NZ; ++k){
+				// for (k = 0; k < NZ; ++k){
 					idx = k + 2*NZ2*j + 2*NZ2*NY*i;		// Using padded index for in-place FFT
-					writeDouble(in[n][idx], out);
-				}
+					fwrite((void *)&in[n][idx], sizeof(double), NZ, out);  // Write each k vector at once
+					//writeDouble(in[n][idx], out);
+				//}
 			}
 		}			
 	}
@@ -225,7 +232,7 @@ void loadData(gpuinfo gpu, const char *name, double **var)
 	int i, j, k, n, idx, N;
 	char title[0x100];
 	snprintf(title, sizeof(title), DataLocation, name);
-	printf("Reading data from %s \n", title);
+	printf("Importing data from %s \n", title);
 	FILE *file = fopen(title, "rb");
 	N = readDouble(file)/sizeof(double);
 	if(N!=NX*NY*NZ) {
@@ -260,7 +267,7 @@ void importVelocity(gpuinfo gpu, fielddata h_vel, fielddata vel)
 	loadData(gpu, "w", h_vel.w);
 
 	// Copy data from host to device
-	printf("Copy results to GPU memory...\n");
+	// printf("Copy results to GPU memory...\n");
 	for(n=0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
 		cudaDeviceSynchronize();
@@ -279,7 +286,7 @@ void importScalar(gpuinfo gpu, fielddata h_vel, fielddata vel)
 	loadData(gpu, "z", h_vel.s);
 
 	// Copy data from host to device
-	printf("Copy results to GPU memory...\n");
+	// printf("Copy results to GPU memory...\n");
 	for(n=0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
 		cudaDeviceSynchronize();
@@ -309,7 +316,7 @@ void printTurbStats(int c, double steptime, statistics stats)
 			"-----------------------------------------------------------\n");
 	// Print statistics to screen
 	printf(" %d  | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | % 2.3f | %2.3f  \n",
-			c*n_stats,stats.Vrms[0][c],stats.KE[0][c],stats.epsilon[0][c],stats.l[0][c],stats.eta[0][c],stats.lambda[0][c],stats.chi[0][c],stats.area_scalar[0][c],steptime/1000);
+			c*n_stats, stats.Vrms, stats.KE, stats.epsilon, stats.l, stats.eta, stats.lambda, stats.chi, stats.area_scalar, steptime/1000);
 
 	return;
 }
@@ -323,27 +330,18 @@ void printIterTime(int c, double steptime)
 	return;
 }
 
-void saveStatsData(statistics stats, statistics h_stats){
-
-	checkCudaErrors( cudaMemcpyAsync(h_stats.Vrms[0],    		stats.Vrms[0],    		 sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_stats.KE[0],      		stats.KE[0],      		 sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_stats.epsilon[0], 		stats.epsilon[0], 		 sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_stats.eta[0],     		stats.eta[0],     		 sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_stats.l[0],       		stats.l[0],       		 sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_stats.lambda[0],  		stats.lambda[0], 		 	 sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_stats.chi[0],     		stats.chi[0],     		 sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_stats.area_scalar[0], stats.area_scalar[0],  sizeof(double)*(nt/n_stats+1), cudaMemcpyDefault) );
+void saveStatsData(const int c, statistics stats){
 
 	// Save statistics data
 	printf("Saving results to file...\n");
-	writeStats("Vrms",    h_stats.Vrms[0]);
-	writeStats("epsilon", h_stats.epsilon[0]);
-	writeStats("eta",     h_stats.eta[0]);
-	writeStats("KE",      h_stats.KE[0]);
-	writeStats("lambda",  h_stats.lambda[0]);
-	writeStats("l",       h_stats.l[0]);
-	writeStats("chi",     h_stats.chi[0]);
-	writeStats("area_z",  h_stats.area_scalar[0]);
+	writeStats(c, "Vrms",    stats.Vrms);
+	writeStats(c, "epsilon", stats.epsilon);
+	writeStats(c, "eta",     stats.eta);
+	writeStats(c, "KE",      stats.KE);
+	writeStats(c, "lambda",  stats.lambda);
+	writeStats(c, "l",       stats.l);
+	writeStats(c, "chi",     stats.chi);
+	writeStats(c, "area_z",  stats.area_scalar);
 
 	return;
 }

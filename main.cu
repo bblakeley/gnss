@@ -14,6 +14,7 @@
 #include <helper_functions.h>
 #include <helper_cuda.h>
 #include <timer.h>
+#include <cuda_profiler_api.h>
 
 // include parameters for DNS
 #include "dnsparams.h"
@@ -26,7 +27,6 @@
 #include "struct_def.h"
 #include "declare.h"
 #include "allocate.h"
-#include "deallocate.h"
 
 void splitData(int numGPUs, gpuinfo *gpu) {
 	int i, n;
@@ -107,11 +107,11 @@ int main (void)
 	// Variables declared in "declare.h"
 	// Allocate memory for variables
 	allocate_memory();
-	printf("Made it past allocation!\n");
 
   // Create plans for cuFFT on each GPU
   plan1dFFT(nGPUs, fft);
   plan2dFFT(gpu, fft);
+  printf("FFt's successfully configured!\n");
 
 	// Declare variables
 	int c = 0;
@@ -146,23 +146,23 @@ int main (void)
 	forwardTransform(fft, gpu, vel.w);
 	forwardTransform(fft, gpu, vel.s);
 
-	// Calculate statistics at initial condition
-	calcTurbStats_mgpu(0, gpu, fft, k, vel, stats);
-
 	// Dealias the solution by truncating RHS
 	deAlias(gpu, k, vel);
 
+	// Calculate statistics at initial condition
+	calcTurbStats_mgpu(0, gpu, fft, k, vel, stats);
+	
 	// Synchronize GPUs before entering timestepping loop
 	synchronizeGPUs(nGPUs);
 
 	// Print statistics to screen
 	int stats_count = 0;
-	printTurbStats(stats_count,0.0,stats);
+	printTurbStats(stats_count,0.0,stats[0]); // Using 0 index to send aggregate data collected in first index
 	stats_count += 1;
 
 	// Start iteration timer
 	// StartTimer();
-
+  cudaProfilerStart();
 //==================================================================================================
 // Enter time-stepping loop
 //==================================================================================================
@@ -186,12 +186,12 @@ int main (void)
 		// Calculate bulk turbulence statistics and print to screen
 		//==============================================================================================
 		if(c % n_stats == 0){
-			calcTurbStats_mgpu(stats_count, gpu, fft, k, vel, stats);
+			calcTurbStats_mgpu(c, gpu, fft, k, vel, stats);
 			// Get elapsed time from Timer
 			steptime = GetTimer();
 		
 			// Print statistics to screen
-			printTurbStats(stats_count,steptime,stats);
+			printTurbStats(stats_count,steptime,stats[0]);  // Using 0 index to send aggregate data collected in first index
 			stats_count += 1;
 		}
 
@@ -229,8 +229,6 @@ int main (void)
 	// Make sure that the stats counter is equal to the number of data points being saved
 	if(stats_count != nt/n_stats+1)
 		printf("Error: Length of stats not equal to counter!!\n");
-	// Save data to HDD
-	saveStatsData(stats, h_stats);
 
 	// Post-Simulation cleanup
 	// Deallocate resources
@@ -241,6 +239,8 @@ int main (void)
 		cudaSetDevice(n);
 		cudaDeviceReset();
 	}
+	
+	cudaProfilerStop();
 
 	return 0;
 }

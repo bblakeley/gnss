@@ -4,4 +4,6 @@
 
 void allocate_memory();
 
+void deallocate_memory();
+
 #endif

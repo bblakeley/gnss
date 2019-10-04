@@ -8,7 +8,7 @@ fftinfo fft;
 // Declare struct for holding statistics on the host
 statistics h_stats;
 // Declare statistics variables on GPU
-statistics stats;
+statistics *stats;
 
 // Wavenumber vector
 double **k;

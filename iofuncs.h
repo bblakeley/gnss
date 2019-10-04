@@ -16,6 +16,6 @@ void printTurbStats(int iter, double time, statistics stats);
 
 void printIterTime(int iter, double time);
 
-void saveStatsData(statistics stats, statistics h_stats);
+void saveStatsData(const int c, statistics stats);
 
 #endif

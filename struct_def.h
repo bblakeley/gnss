@@ -11,16 +11,16 @@ typedef struct gpuinfo{
 } gpuinfo;
 
 typedef struct statistics{
-	double **Vrms;							// RMS velocity
-	double **KE;								// Turbulent kinetic energy
-	double **epsilon;					  // Dissipation rate of tke
-	double **eta;							  // Kolmogorov length Scale
-	double **l;								  // Integral length scale
-	double **lambda;						// Taylor Micro scale
-	double **chi;							  // Scalar dissipation rate
-	double **area_scalar;			  // Area of the iso-scalar surface
-	double **area_tnti;				  // Area of the iso-enstrophy surface (Turbulent/non-turbulent interface)
-	double **energy_spect;			// Spectral energy in spherical wave number shells
+	double Vrms;							// RMS velocity
+	double KE;								// Turbulent kinetic energy
+	double epsilon;					  // Dissipation rate of tke
+	double eta;							  // Kolmogorov length Scale
+	double l;								  // Integral length scale
+	double lambda;						// Taylor Micro scale
+	double chi;							  // Scalar dissipation rate
+	double area_scalar;			  // Area of the iso-scalar surface
+	double area_tnti;				  // Area of the iso-enstrophy surface (Turbulent/non-turbulent interface)
+	double energy_spect;			// Spectral energy in spherical wave number shells
 }statistics;
 
 typedef struct fftinfo{

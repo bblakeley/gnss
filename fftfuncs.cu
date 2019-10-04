@@ -66,12 +66,12 @@ void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex
 			// printf("dstNum = %d\n",dstNum);
 
 			// Open kernel that grabs all data 
-			// organizeData<<<divUp(NZ2,TX), TX>>>(src[n], temp[n], NX/nGPUs, j);
-			organizeData_coalesced<<<divUp(NX/gpu.nGPUs,TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
-			// organizeData_coalesced<<<divUp(gpu.nx[n],TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
+			// organizeData<<<divUp(NZ2,TX), TX>>>(src[n], temp[n], NX/gpu.nGPUs, j);
+			// organizeData_coalesced<<<divUp(NX/gpu.nGPUs,TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
+			organizeData_coalesced<<<divUp(gpu.nx[n],TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
 
-			local_idx_dst = n*NX/gpu.nGPUs*NZ2 + (j - dstNum*NY/gpu.nGPUs)*NZ2*NX;
-			// local_idx_dst = gpu.start_x[n]*NZ2 + (j - gpu.start_y[dstNum])*NZ2*NX;
+			// local_idx_dst = n*NX/gpu.nGPUs*NZ2 + (j - dstNum*NY/gpu.nGPUs)*NZ2*NX;
+			local_idx_dst = gpu.start_x[n]*NZ2 + (j - gpu.start_y[dstNum])*NZ2*NX;
 			// printf("For j = %d, GPU = %d, the local idx at destination = %d \n",j,gpu.gpunum[n], local_idx_dst);
 
 			checkCudaErrors( cudaMemcpyAsync(&dst[dstNum][local_idx_dst], temp[n], sizeof(cufftDoubleComplex)*NZ2*gpu.nx[n], cudaMemcpyDefault) );
@@ -137,7 +137,7 @@ void plan2dFFT(gpuinfo gpu, fftinfo fft){
 	  }
 
 	  printf("The workspace size required for the forward transform is %lu.\n", fft.wsize_f[n]);
-	  printf("The workspace size required for the inverse transform is %lu.\n", fft.wsize_i[n]);
+	  // printf("The workspace size required for the inverse transform is %lu.\n", fft.wsize_i[n]);
 
 	  // Assuming that both workspaces are the same size (seems to be generally true), then the two workspaces can share an allocation - need to use maximum value here
 	  // Allocate workspace memory
