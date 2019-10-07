@@ -5,6 +5,11 @@
 #include <helper_cuda.h>
 #include <cufft.h>
 #include <cuComplex.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 
 #include "dnsparams.h"
 #include "iofuncs.h"
@@ -52,7 +57,7 @@ void writeStats(const int c, const char* name, double in) {
 	char title[0x100];
 	FILE *out;
 	
-	snprintf(title, sizeof(title), StatsLocation, name);
+	snprintf(title, sizeof(title), "%sstats/%s", rootdir, name);
 	printf("Writing data to %s \n", title);
 	if(c==0){ // First timestep, create new file
 	  out = fopen(title, "wb");
@@ -71,8 +76,7 @@ void writexyfields( gpuinfo gpu, const int iter, const char var, double **in, co
 	int i, j, n, idx;
 	char title[0x100];
 
-	// snprintf(title, sizeof(title), SaveLocation, NX, Re, var, iter);
-	snprintf(title, sizeof(title), VisLocation, var, "_xy", iter);
+	snprintf(title, sizeof(title), "%svis/%c%s.%i", rootdir, var, "_xy", iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NX*NY, out);
@@ -95,8 +99,8 @@ void writexzfields( gpuinfo gpu, const int iter, const char var, double **in, co
 {
 	int i, k, n, idx;
 	char title[0x100];
-	// snprintf(title, sizeof(title), SaveLocation, NX, Re, var, iter);
-	snprintf(title, sizeof(title), SaveLocation, var, iter);
+	
+	snprintf(title, sizeof(title), "%svis/%c%s.%i", rootdir, var, "_xz", iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NX*NZ, out);
@@ -119,8 +123,8 @@ void writeyzfields( gpuinfo gpu, const int iter, const char var, double **in, co
 {
 	int j, k, n, idx;
 	char title[0x100];
-	// snprintf(title, sizeof(title), SaveLocation, NX, Re, var, iter);
-	snprintf(title, sizeof(title), SaveLocation, var, iter);
+
+	snprintf(title, sizeof(title), "%svis/%c%s.%i", rootdir, var, "_yz", iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NY*NZ, out);
@@ -133,30 +137,40 @@ void writeyzfields( gpuinfo gpu, const int iter, const char var, double **in, co
 		}
 	}
 
-
 	fclose(out);
 
 	return;
 }
 
-void save2Dfields(int c, fftinfo fft, gpuinfo gpu, const char var, double **h_f, cufftDoubleComplex **fhat){
+void save2Dfields(int c, fftinfo fft, gpuinfo gpu, const char var, double **h_f, cufftDoubleComplex **fhat)
+{
 	int n;
-		// Inverse Fourier Transform the velocity back to physical space for saving to file.
-		inverseTransform(fft, gpu, fhat);
+	char title[0x100];
+	struct stat st = {0};
 
-		// Copy data to host   
-		printf( "Timestep %i Complete. . .\n", c );
-		for(n=0; n<gpu.nGPUs; ++n){
-			cudaSetDevice(n);
-			cudaDeviceSynchronize();
-			checkCudaErrors( cudaMemcpyAsync(h_f[n], (cufftDoubleReal**) fhat[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		}
+	if(c==0){ // Create new directory for visualization data if one doesn't already exist
+	  snprintf(title, sizeof(title), "%s%s", rootdir, "vis/");
+    if (stat(title, &st) == -1) {
+      mkdir(title, 0700);
+    }
+  }
+  
+	// Inverse Fourier Transform the velocity back to physical space for saving to file.
+	inverseTransform(fft, gpu, fhat);
 
-		// Write data to file
-		writexyfields( gpu, c, var, h_f, NZ/2);
+	// Copy data to host   
+	for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+		cudaDeviceSynchronize();
+		checkCudaErrors( cudaMemcpyAsync(h_f[n], (cufftDoubleReal**) fhat[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+	}
 
-		// Transform fields back to fourier space for timestepping
-		forwardTransform(fft, gpu, (cufftDoubleReal**) fhat);
+	// Write data to file
+	writexyfields( gpu, c, var, h_f, NZ/2);
+	// XZ and YZ directions not finished yet!
+
+	// Transform fields back to fourier space for timestepping
+	forwardTransform(fft, gpu, (cufftDoubleReal**) fhat);
 
 	return;
 }
@@ -165,8 +179,8 @@ void write3Dfields_mgpu(gpuinfo gpu, const int iter, const char var, double **in
 {
 	int i, j, k, n, idx;
 	char title[0x100];
-	// snprintf(title, sizeof(title), SaveLocation, NX, Re, var, iter);
-	snprintf(title, sizeof(title), SaveLocation, var, iter);
+
+	snprintf(title, sizeof(title), "%s%c.%i", rootdir, var, iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NX*NY*NZ, out);
@@ -192,8 +206,14 @@ void write3Dfields_mgpu(gpuinfo gpu, const int iter, const char var, double **in
 
 void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel){
 	int n;
+	struct stat st = {0};
 
 	if(c==0){
+	
+    if (stat(rootdir, &st) == -1) {  // Create root directory for DNS data if one doesn't already exist
+      mkdir(rootdir, 0700);
+    }
+	
 		printf("Saving initial data...\n");
 		for(n=0; n<gpu.nGPUs; ++n){
 			cudaSetDevice(n);
@@ -277,6 +297,7 @@ void loadData(gpuinfo gpu, const char *name, double **var)
 
 	int i, j, k, n, idx, N;
 	char title[0x100];
+	
 	snprintf(title, sizeof(title), DataLocation, name);
 	printf("Importing data from %s \n", title);
 	FILE *file = fopen(title, "rb");
@@ -376,7 +397,18 @@ void printIterTime(int c, double steptime)
 	return;
 }
 
-void saveStatsData(const int c, statistics stats){
+void saveStatsData(const int c, statistics stats)
+{
+  struct stat st = {0};
+  char title[0x100];
+
+	
+	if(c==0){  // Create directory for statistics if one doesn't already exist
+	  snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
+    if (stat(title, &st) == -1) {  
+      mkdir(title, 0700);
+    }
+  }
 
 	// Save statistics data
 	printf("Saving results to file...\n");
