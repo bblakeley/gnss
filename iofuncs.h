@@ -4,11 +4,15 @@
 
 void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel);
 
-void save2Dfield(int c, fftinfo fft, gpuinfo gpu, cufftDoubleComplex **fhat, double **h_f);
+void save2Dfields(int c, fftinfo fft, gpuinfo gpu, const char var, double **h_f, cufftDoubleComplex **fhat);
 
 void writeStats( const char* name, double *in);
 
 void importData(gpuinfo gpu, fielddata h_vel, fielddata vel);
+
+void importScalar(gpuinfo gpu, fielddata h_vel, fielddata vel);
+
+void importVelocity(gpuinfo gpu, fielddata h_vel, fielddata vel);
 
 void displayDeviceProps(int numGPUs);
 

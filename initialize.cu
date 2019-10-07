@@ -14,6 +14,50 @@
 #include "solver.h"
 #include "iofuncs.h"
 
+__global__ 
+void initializeTGkernel(int start_x, cufftDoubleReal *f1, cufftDoubleReal *f2, cufftDoubleReal *f3, cufftDoubleReal *f4)
+{
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+	const int k = blockIdx.z * blockDim.z + threadIdx.z;
+	if (( (i+start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
+	const int idx = flatten( i, j, k, NX, NY, 2*NZ2);	// Index local to the GPU
+
+/*	// For domain centered at (pi,pi,pi)
+	double x = (i + start_x) * (double)LX / NX;
+	double y = j * (double)LY / NY;
+	double z = k * (double)LZ / NZ; */
+
+	// For domain centered at (0,0,0):
+	double x = -(double)LX/2 + (i + start_x)*(double)LX/NX ;
+	double y = -(double)LY/2 + j*(double)LY/NY;
+	double z = -(double)LZ/2 + k*(double)LZ/NZ;
+
+	// Initialize starting array - Taylor Green Vortex
+	f1[idx] = sin(x)*cos(y)*cos(z);		// u
+	f2[idx] = -cos(x)*sin(y)*cos(z);	// v
+	f3[idx] = 0.0;						// w
+	f4[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));	// z
+
+	return;
+}
+
+void initializeTaylorGreen(gpuinfo gpu, fielddata vel)
+{
+	int n;
+	for (n = 0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
+
+		initializeTGkernel<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], vel.s[n]);
+		printf("Velocity initialized on GPU #%d...\n",n);
+	}
+
+	return;
+}
+
 __global__
 void hpFilterKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *fhat){
 
@@ -79,15 +123,6 @@ void initializeVelocityKernel_mgpu(int start_x, cufftDoubleReal *f1, cufftDouble
 	double y = -(double)LY/2 + j*(double)LY/NY;
 	// double z = -(double)LZ/2 + k*(double)LZ/NZ;
 
-/*	// For domain centered at (pi,pi,pi)
-	double x = (i + start_x) * (double)LX / NX;
-	double y = j * (double)LY / NY;
-	double z = k * (double)LZ / NZ;*/
-
-/*	// Initialize starting array - Taylor Green Vortex
-	f1[idx] = sin(x)*cos(y)*cos(z);
-	f2[idx] = -cos(x)*sin(y)*cos(z);
-	f3[idx] = 0.0;*/
 /*
 	// Initialize velocity array - adding shear profile onto isotropic velocity field
 	f1[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 )) + 0.02*f1[idx];
@@ -170,7 +205,7 @@ void initializeScalar(gpuinfo gpu, fielddata vel)
 
 }
 
-void initializeData(gpuinfo gpu, fftinfo fft, fielddata vel)
+void initializeData(gpuinfo gpu, fftinfo fft, fielddata vel) // Deprecated
 { // Initialize DNS data
 
 	// initializeVelocity(gpu, vel);

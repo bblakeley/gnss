@@ -66,29 +66,97 @@ void writeStats(const int c, const char* name, double in) {
 	fclose(out);
 }
 
-void write2Dfields_mgpu( gpuinfo gpu, const int iter, const char var, double **in ) 
+void writexyfields( gpuinfo gpu, const int iter, const char var, double **in, const int zplane ) 
 {
-	int i, j, k, n, idx;
+	int i, j, n, idx;
 	char title[0x100];
+
 	// snprintf(title, sizeof(title), SaveLocation, NX, Re, var, iter);
-	snprintf(title, sizeof(title), SaveLocation, var, iter);
+	snprintf(title, sizeof(title), VisLocation, var, "_xy", iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
-	writeDouble(sizeof(double) * NX*NY*NZ, out);
-	// writelu(sizeof(double) * NX*NY*NZ, out);
+	writeDouble(sizeof(double) * NX*NY, out);
 	for (n = 0; n < gpu.nGPUs; ++n){
 		for (i = 0; i < gpu.nx[n]; ++i){
 			for (j = 0; j < NY; ++j){
-				for (k = 0; k < NZ; ++k){
-					idx = k + 2*NZ2*j + 2*NZ2*NY*i;		// Using padded index for in-place FFT
-					writeDouble(in[n][idx], out);
-				}
+				idx = zplane + 2*NZ2*j + 2*NZ2*NY*i;		// Using padded index for in-place FFT
+				writeDouble(in[n][idx], out);
 			}
 		}			
 	}
 
 
 	fclose(out);
+
+	return;
+}
+
+void writexzfields( gpuinfo gpu, const int iter, const char var, double **in, const int yplane ) 
+{
+	int i, k, n, idx;
+	char title[0x100];
+	// snprintf(title, sizeof(title), SaveLocation, NX, Re, var, iter);
+	snprintf(title, sizeof(title), SaveLocation, var, iter);
+	printf("Saving data to %s \n", title);
+	FILE *out = fopen(title, "wb");
+	writeDouble(sizeof(double) * NX*NZ, out);
+	// writelu(sizeof(double) * NX*NY*NZ, out);
+	k=0;
+	for (n = 0; n < gpu.nGPUs; ++n){
+		for (i = 0; i < gpu.nx[n]; ++i){
+			idx = k + 2*NZ2*yplane + 2*NZ2*NY*i;		// Using padded index for in-place FFT
+			fwrite((void *)&in[n][idx], sizeof(double), NZ, out);  // Write each k vector at once
+		}			
+	}
+
+
+	fclose(out);
+
+	return;
+}
+
+void writeyzfields( gpuinfo gpu, const int iter, const char var, double **in, const int xplane ) 
+{
+	int j, k, n, idx;
+	char title[0x100];
+	// snprintf(title, sizeof(title), SaveLocation, NX, Re, var, iter);
+	snprintf(title, sizeof(title), SaveLocation, var, iter);
+	printf("Saving data to %s \n", title);
+	FILE *out = fopen(title, "wb");
+	writeDouble(sizeof(double) * NY*NZ, out);
+	// writelu(sizeof(double) * NX*NY*NZ, out);
+	k=0;
+	for (n = 0; n < gpu.nGPUs; ++n){
+		for (j = 0; j < NY; ++j){
+			idx = k + 2*NZ2*j + 2*NZ2*NY*xplane;		// Using padded index for in-place FFT
+			fwrite((void *)&in[n][idx], sizeof(double), NZ, out);  // Write each k vector at once
+		}
+	}
+
+
+	fclose(out);
+
+	return;
+}
+
+void save2Dfields(int c, fftinfo fft, gpuinfo gpu, const char var, double **h_f, cufftDoubleComplex **fhat){
+	int n;
+		// Inverse Fourier Transform the velocity back to physical space for saving to file.
+		inverseTransform(fft, gpu, fhat);
+
+		// Copy data to host   
+		printf( "Timestep %i Complete. . .\n", c );
+		for(n=0; n<gpu.nGPUs; ++n){
+			cudaSetDevice(n);
+			cudaDeviceSynchronize();
+			checkCudaErrors( cudaMemcpyAsync(h_f[n], (cufftDoubleReal**) fhat[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		}
+
+		// Write data to file
+		writexyfields( gpu, c, var, h_f, NZ/2);
+
+		// Transform fields back to fourier space for timestepping
+		forwardTransform(fft, gpu, (cufftDoubleReal**) fhat);
 
 	return;
 }
@@ -178,28 +246,6 @@ void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 	return;
 	}
 
-}
-
-void save2Dfield(int c, fftinfo fft, gpuinfo gpu, cufftDoubleComplex **fhat, double **h_f){
-	int n;
-		// Inverse Fourier Transform the velocity back to physical space for saving to file.
-		inverseTransform(fft, gpu, fhat);
-
-		// Copy data to host   
-		printf( "Timestep %i Complete. . .\n", c );
-		for(n=0; n<gpu.nGPUs; ++n){
-			cudaSetDevice(n);
-			cudaDeviceSynchronize();
-			checkCudaErrors( cudaMemcpyAsync(h_f[n], (cufftDoubleReal**) fhat[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		}
-
-		// Write data to file
-		// write2Dfields_mgpu(gpus, c, 'zslice', h_f);
-
-		// Transform fields back to fourier space for timestepping
-		forwardTransform(fft, gpu, (cufftDoubleReal**) fhat);
-
-	return;
 }
 
 int readDataSize(FILE *f){
@@ -296,7 +342,7 @@ void importScalar(gpuinfo gpu, fielddata h_vel, fielddata vel)
 	return;
 }
 
-void importData(gpuinfo gpu, fielddata h_vel, fielddata vel)
+void importData(gpuinfo gpu, fielddata h_vel, fielddata vel) // Deprecated
 {	// Import data
 
 	importVelocity(gpu, h_vel, vel);

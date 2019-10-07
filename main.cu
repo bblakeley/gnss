@@ -91,7 +91,7 @@ int main (void)
 	int n, nGPUs;
 	// Query number of devices attached to host
 	// cudaGetDeviceCount(&nGPUs);
-	nGPUs=2;
+	nGPUs=1;
 
 	printf("Welcome to the GPU-based Navier-Stokes Solver! Configuration: \n"
 		"Number of GPUs = %d \n "
@@ -111,7 +111,7 @@ int main (void)
   // Create plans for cuFFT on each GPU
   plan1dFFT(nGPUs, fft);
   plan2dFFT(gpu, fft);
-  printf("FFt's successfully configured!\n");
+  printf("FFT's successfully configured!\n");
 
 	// Declare variables
 	int c = 0;
@@ -130,15 +130,18 @@ int main (void)
 	initializeWaveNumbers(gpu, k);
 
 	// Launch CUDA kernel to initialize velocity field
-	importData(gpu, h_vel, vel);
+	// importVelocity(gpu, h_vel, vel);
+	// importScalar(gpu, h_vel, vel);
 	
-	// initializeData(gpu, fft, vel);
+  initializeTaylorGreen(gpu,vel);
 	// initializeJet_Superposition(fft, gpu, k, h_vel, vel, rhs);	// Does not require importData
 	// initializeJet_Convolution(fft, gpu, h_vel, vel, rhs);  // Does not require importData
 
 	// Save Initial Data to file (t = 0)
 	// Copy data to host   
 	save3Dfields(c, fft, gpu, h_vel, vel);
+	synchronizeGPUs(nGPUs);
+	save2Dfields(c, fft, gpu, 'z', h_vel.s, vel.sh);
 
 	// Transform velocity to fourier space for timestepping
 	forwardTransform(fft, gpu, vel.u);
@@ -195,8 +198,8 @@ int main (void)
 			stats_count += 1;
 		}
 
-		if(c % n_save2D == 0){
-			// save2Dfield(c, fft, gpus, zhat, &h_vel->s);
+		if(c % n_vis == 0){
+			save2Dfields(c, fft, gpu, 'z', h_vel.s, vel.sh);
 		}
 
 		// Synchronize GPUs before moving to next timestep
