@@ -151,7 +151,7 @@
 //========================================================================================================
 // Digits Settings 
 //========================================================================================================
-
+/*
 // 256^3 Temporal Jet, following daSilva 2008, PoF
 #define NX 256
 #define NY 256
@@ -164,10 +164,10 @@
 #define LZ (2*PI)
 #define DX (LX/NX)
 #define n_checkpoint 500                // Number of steps to take between saving full 3D fields for checkpointing
-#define n_vis 5       // Number of timesteps to take between saving 2D slices of field data
-#define n_stats 100             // Number of timesteps to take between calculating stats data
+#define n_vis 100       // Number of timesteps to take between saving 2D slices of field data
+#define n_stats 5             // Number of timesteps to take between calculating stats data
 #define dt .004         // Timestep
-#define nt 20                // Total number of timesteps to take in the simulation
+#define nt 5               // Total number of timesteps to take in the simulation
 #define H (PI/3.0)
 #define theta (H/35.0)
 #define nu (H/3200.0)
@@ -176,9 +176,9 @@
 #define k_max (2.0/3.0*(double)NX/2.0)                  // De-alias using the 2/3 truncation rule
 #define k_fil 48.0                                                              // High-pass filter cutoff for initial condition
 #define RAD 1	// stencil radius for surface area calculations
-#define rootdir "/home/bblakeley/Documents/GNSS/test/temporal-jet/tempinv2_6H_0R2_Re3200_filter48/"
+#define rootdir "/home/bblakeley/Documents/GNSS/test/temporal-jet/inv2_6H_0R2_Re3200_filter48/"
 #define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R2/%s.0"
-
+*/
 /*
 // 512^3 Temporal Jet, following daSilva 2008, PoF
 #define NX 512
@@ -209,7 +209,7 @@
 #define H (PI/4.0)
 #define theta (H/35.0)
 */
-/*
+
 // R2 H.I.T. Simulation Settings
 #define NX 256
 #define NY 256
@@ -232,13 +232,12 @@
 // #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation (from Weirong's thesis)
 #define rootdir "/home/bblakeley/Documents/GNSS/test/R2/"
+#define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R2/%s.0"
 #define H (PI/3.0)
 #define theta (H/35.0)
 #define k_fil 12.0
 #define RAD 1 // Radius of finite difference stencil for area calculations
-#define H (PI/4.0)
-#define theta (H/35.0)
-*/
+
 /*
 // R4 H.I.T. Simulation Settings
 #define NX 512

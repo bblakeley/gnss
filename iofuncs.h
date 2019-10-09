@@ -4,7 +4,7 @@
 
 void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel);
 
-void save2Dfields(int c, fftinfo fft, gpuinfo gpu, const char var, double **h_f, cufftDoubleComplex **fhat);
+void save2Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel);
 
 void writeStats( const char* name, double *in);
 
@@ -21,5 +21,7 @@ void printTurbStats(int iter, double time, statistics stats);
 void printIterTime(int iter, double time);
 
 void saveStatsData(const int c, statistics stats);
+
+void saveYprofiles(const int c, profile data);
 
 #endif

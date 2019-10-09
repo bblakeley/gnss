@@ -8,4 +8,6 @@ void deAlias(gpuinfo gpu, double **k, fielddata vel);
 
 void takeDerivative(int dir, gpuinfo gpu, double **waveNum, cufftDoubleComplex **f, cufftDoubleComplex **fIk);
 
+void calcVorticity(gpuinfo gpu, double **waveNum, fielddata vel, fielddata rhs);
+
 #endif

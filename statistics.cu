@@ -19,6 +19,7 @@
 #include "cudafuncs.h"
 #include "fftfuncs.h"
 #include "iofuncs.h"
+#include "solver.h"
 
 /*
 __global__
@@ -1207,6 +1208,69 @@ void exchangeHalo_mgpu(gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **left,
 	return;
 }
 
+__global__ void volumeAverage_kernel(double nx, double *f, double *result)
+{
+  int idx, s_idx, k;
+  extern __shared__ double tmp[];
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+  const int s_w = blockDim.x;
+	const int s_h = blockDim.y;
+	const int s_col = threadIdx.x;
+	const int s_row = threadIdx.y;
+	if ((i >= nx) || (j >= NY)) return;
+	s_idx = flatten(s_col, s_row, 0, s_w, s_h, 1);
+	
+	// Initialize tmp
+	tmp[s_idx] = 0.0;
+	
+	// Sum z-vectors into 2-D plane
+	for(k=0; k<NZ; ++k){
+	  idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
+	  tmp[s_idx] += f[idx]*f[idx]/NN;
+	}
+
+	__syncthreads();
+	
+	// Sum each thread block and then add to result
+	if (threadIdx.x == 0 && threadIdx.y == 0){
+
+		double blockSum = 0.0;
+		for (int n = 0; n < blockDim.x*blockDim.y*blockDim.z; ++n) {
+			blockSum += tmp[n];
+		}
+		
+		// Add contributions from each block
+		atomicAdd(result, blockSum);
+	}
+  
+  return;
+}
+
+double volumeAverage(gpuinfo gpu, double **f, statistics *stats)
+{   // Function to calculate volume average of a 3-d field variable
+
+  int n;
+  double average=0.0;
+  for(n=0; n<gpu.nGPUs; ++n){
+    cudaSetDevice(n); 
+
+	  // Set thread and block dimensions for kernal calls
+    const dim3 blockSize(TX, TY, 1);
+	  const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), 1);
+	  const size_t smemSize = TX*TY*sizeof(double);
+	  
+	  volumeAverage_kernel<<<gridSize,blockSize,smemSize>>>(gpu.nx[n], f[n], &stats[n].tmp);
+  }
+  
+  synchronizeGPUs(gpu.nGPUs);
+  // Add results from GPUs
+  for(n=0; n<gpu.nGPUs; ++n)
+	  average += stats[n].tmp;
+    
+  return average;
+}
+
 __global__
 void surfaceArea_kernel_mgpu(const int start_x, const int nx, const int w, const int h, const int d, double *F, double *left, double *right, double ref, double *SA) {
 	extern __shared__ double s_F[];
@@ -1383,8 +1447,13 @@ void calcSurfaceArea_mgpu(gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **le
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));
 	}
+	
+	synchronizeGPUs(gpu.nGPUs);
+	// Collect results from all GPUs
+	for(n=1;n<gpu.nGPUs;++n)
+	  stats[0].area_scalar += stats[n].area_scalar;
 
-		return;
+	return;
 
 }
 
@@ -1453,6 +1522,34 @@ void calcVrmsKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, c
 	return;
 }
 
+void calcVrms(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+{ 
+  int n;
+  for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		// Set thread and block dimensions for kernal calls
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
+		const size_t smemSize = TX*TY*TZ*sizeof(double);
+		
+		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].Vrms, &stats[n].KE);
+
+  }
+  
+  synchronizeGPUs(gpu.nGPUs);
+  // Sum contributions from all GPUs
+  for(n=1; n<gpu.nGPUs; ++n){
+    stats[0].Vrms += stats[n].Vrms;
+    stats[0].KE += stats[n].KE;
+  }
+  
+  //calcVrms kernel doesn't actually calculate the RMS velocity - Take square root to get Vrms
+	stats[0].Vrms = sqrt(stats[0].Vrms);
+  
+  return;
+}
+
 __global__
 void calcEpsilonKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *eps){
 // Function to calculate the rate of dissipation of kinetic energy in a flow field
@@ -1508,6 +1605,30 @@ void calcEpsilonKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat
 	}
 
 	return;
+}
+
+void calcDissipationRate(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+{ 
+  int n;
+  for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		// Set thread and block dimensions for kernal calls
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
+		const size_t smemSize = TX*TY*TZ*sizeof(double);
+		
+		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].epsilon);
+
+  }
+  
+  synchronizeGPUs(gpu.nGPUs);
+  // Sum contributions from all GPUs
+  for(n=1; n<gpu.nGPUs; ++n)
+    stats[0].epsilon += stats[n].epsilon;
+  
+
+  return;
 }
 
 __global__
@@ -1571,6 +1692,29 @@ void calcIntegralLengthKernel_mgpu(int start_y, double *wave, cufftDoubleComplex
 	return;
 }
 
+void calcIntegralLength(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+{ 
+  int n;
+  for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		// Set thread and block dimensions for kernal calls
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
+		const size_t smemSize = TX*TY*TZ*sizeof(double);
+		
+		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].l);
+
+  }
+  
+  synchronizeGPUs(gpu.nGPUs);
+  // Sum contributions from all GPUs
+  for(n=1; n<gpu.nGPUs; ++n)
+    stats[0].l += stats[n].l;
+  
+  return;
+}
+
 __global__
 void calcScalarDissipationKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *zhat, double *chi){
 // Function to calculate the RMS velocity of a flow field
@@ -1632,6 +1776,29 @@ void calcScalarDissipationKernel_mgpu(int start_y, double *wave, cufftDoubleComp
 	}
 
 	return;
+}
+
+void calcScalarDissipationRate(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+{ 
+  int n;
+  for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		// Set thread and block dimensions for kernal calls
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
+		const size_t smemSize = TX*TY*TZ*sizeof(double);
+		
+		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.sh[n], &stats[n].chi);
+
+  }
+  
+  synchronizeGPUs(gpu.nGPUs);
+  // Sum contributions from all GPUs
+  for(n=1; n<gpu.nGPUs; ++n)
+    stats[0].chi += stats[n].chi;
+  
+  return;
 }
 
 __global__
@@ -1720,7 +1887,102 @@ void calcSpectra_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fiel
 	return;
 }
 
-void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, statistics *stats)
+__global__ void calcYprofile_kernel_2D(int nx, double *data, double *prof)
+{
+  int idx, s_idx, k;
+  double blockSum[TY] = {0.0};
+  extern __shared__ double tmp[];
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+  const int s_w = blockDim.x;
+	const int s_h = blockDim.y;
+	const int s_col = threadIdx.x;
+	const int s_row = threadIdx.y;
+	if ((i >= nx) || (j >= NY)) return;
+	s_idx = flatten(s_col, s_row, 0, s_w, s_h, 1);
+	
+	// Initialize tmp
+	tmp[s_idx] = 0.0;
+	prof[j] = 0.0;
+	
+	// Sum z-vectors into 2-D plane
+	for(k=0; k<NZ; ++k){
+	  idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
+	  tmp[s_idx] += data[idx]/(NX*NZ);
+	}
+
+	__syncthreads();
+	
+	// Sum each thread block and then add to result
+	if (threadIdx.x == 0){
+
+		for (int n=0; n<blockDim.x; ++n) {
+		  s_idx = flatten(n, s_row, 0, s_w, s_h, 1);
+			blockSum[s_row] += tmp[s_idx];
+		}
+		
+		__syncthreads();
+		
+		// Add contributions from each block
+		atomicAdd(&prof[j], blockSum[s_row]);
+	}
+  
+  return;
+}
+
+__global__ void calcYprofile_kernel_1D(int nx, double *data, double *prof)
+{ // Kernel to average over X,Z dimensions
+  
+  int i,k,idx;
+	const int j = blockIdx.x * blockDim.x + threadIdx.x;
+	if(j >= NY) return;
+	
+	// Initialize to zero
+	prof[j] = 0.0;
+	
+  // Average over x and z directions
+  for(i=0; i<NZ; i++){
+    for(k=0; k<nx; k++){
+      idx = flatten(i,j,k,nx,NY,2*NZ2);
+      prof[j] += data[idx]/(NX*NZ);   // Sum all x,z components into y profile
+    }
+  }
+
+  return;
+}
+
+void calcYprofile(gpuinfo gpu, double **f, double **Yprof)
+{ // Average over X,Z directions to create mean profiles in the Y direction
+
+	int n,j;
+	
+	for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n); 
+
+    const dim3 blockSize(TX, TY, 1);
+	  const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), 1);
+	  const size_t smemSize = TX*TY*sizeof(double);
+    // Calculate mean profile of u-velocity
+	  calcYprofile_kernel_2D<<<gridSize,blockSize,smemSize>>>(gpu.nx[n], f[n], Yprof[n]);
+	  
+	  // 1D kernel - not optimal, but works
+	  // calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], f[n], Yprof[n]);
+	  //calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.v[n], Yprof.v[n]);
+	  //calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.w[n], Yprof.w[n]);
+	  //calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.s[n], Yprof.s[n]);
+	}
+	
+	synchronizeGPUs(gpu.nGPUs);
+	for(n=1;n<gpu.nGPUs;++n){
+	  for(j=0;j<NY;++j){
+	    Yprof[0][j] += Yprof[n][j];
+	  }
+	}
+	
+	return;
+}
+
+void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, fielddata rhs, statistics *stats, profile Yprofile)
 {// Function to call a cuda kernel that calculates the relevant turbulent statistics
 
 	// Synchronize GPUs before calculating statistics
@@ -1749,385 +2011,80 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 //=============================================================================================
 	// Statistics for turbulent velocity field
 	// Launch kernels to calculate stats
-	for(n=0; n<nGPUs; ++n){
-		cudaSetDevice(n);
-
-		// Set thread and block dimensions for kernal calls
-		const dim3 blockSize(TX, TY, TZ);
-		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
-		const size_t smemSize = TX*TY*TZ*sizeof(double);
-		cudaError_t err;
-
-		// Call kernels to calculate turbulence statistics
-		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].Vrms, &stats[n].KE);
-		err = cudaGetLastError();
-		if (err != cudaSuccess) 
-	    printf("Error: %s\n", cudaGetErrorString(err));
-
-		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].epsilon);
-		err = cudaGetLastError();
-		if (err != cudaSuccess) 
-	    printf("Error: %s\n", cudaGetErrorString(err));
-
-		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].l);
-		err = cudaGetLastError();
-		if (err != cudaSuccess) 
-	    printf("Error: %s\n", cudaGetErrorString(err));
-
-		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.sh[n], &stats[n].chi);
-		err = cudaGetLastError();
-		if (err != cudaSuccess) 
-	    printf("Error: %s\n", cudaGetErrorString(err));
-
-	}
+	calcVrms(gpu, wave, vel, stats);
+	calcDissipationRate(gpu, wave, vel, stats);
+	calcIntegralLength(gpu, wave, vel, stats);
+	calcScalarDissipationRate(gpu, wave, vel, stats);
 
 	// Calculate energy and scalar spectra
 	// calcSpectra_mgpu(c, gpu, fft, wave, vel, stats);
+	
+	// Form the vorticity in Fourier space
+	calcVorticity(gpu, wave, vel, rhs);
 
 	synchronizeGPUs(nGPUs);
+	
 //=============================================================================================
-// Post-processing for surface area, etc.
+// Post-processing in physical domain
 //=============================================================================================
-	// Transform scalar field to physical domain
+  
+  // Compute vorticity calculations first
+  //==============================================
+	// Transform vorticity to physical domain
+	inverseTransform(fft, gpu, rhs.uh);
+	inverseTransform(fft, gpu, rhs.vh);
+	inverseTransform(fft, gpu, rhs.wh);
+	synchronizeGPUs(nGPUs);
+	// Take volume average of vorticity
+	stats[0].omega_x = volumeAverage(gpu, rhs.u, stats);
+	stats[0].omega_y = volumeAverage(gpu, rhs.v, stats);
+	stats[0].omega_z = volumeAverage(gpu, rhs.w, stats);
+	
+	// Calculate vorticity magnitude
+	
+	// Transform primitive variables to physical domain
+	inverseTransform(fft, gpu, vel.uh);
+	inverseTransform(fft, gpu, vel.vh);
+	inverseTransform(fft, gpu, vel.wh);
 	inverseTransform(fft, gpu, vel.sh);
-
-	double iso = 0.5;
+  
+  // Calculate mean profiles
+  calcYprofile(gpu, vel.u, Yprofile.u);
+  calcYprofile(gpu, vel.v, Yprofile.v);
+  calcYprofile(gpu, vel.w, Yprofile.w);
+  calcYprofile(gpu, vel.s, Yprofile.s);
+  
+  // Calculate fluctuating velocity fields and Reynolds stress profiles
+  
+  synchronizeGPUs(nGPUs);			// Synchronize GPUs
+	
   // Calculate surface area of scalar field
+  double iso = 0.5;
   calcSurfaceArea_mgpu(gpu, vel.s, vel.left, vel.right, iso, stats);
   
   synchronizeGPUs(nGPUs);			// Synchronize GPUs
-
-	forwardTransform(fft, gpu, vel.s);
-	
-	synchronizeGPUs(nGPUs);			// Synchronize GPUs
-
+  
+  forwardTransform(fft, gpu, vel.u);
+  forwardTransform(fft, gpu, vel.v);
+  forwardTransform(fft, gpu, vel.w);	
+  forwardTransform(fft, gpu, vel.s);
+  
 //=============================================================================================
 // Collecting results from all GPUs
 //=============================================================================================
 
-	// Adding together results from all GPUs
-	for(n=1; n<nGPUs; ++n){
-		cudaSetDevice(n);	
-
-		stats[0].KE += stats[n].KE;   // No memcopy required because they are managed arrays
-		stats[0].Vrms += stats[n].Vrms;
-		stats[0].epsilon += stats[n].epsilon;
-		stats[0].l += stats[n].l;
-		stats[0].chi += stats[n].chi;
-		stats[0].area_scalar += stats[n].area_scalar;
-	}
-	// "Post-processing" results from kernel calls - Calculating the remaining statistics
-	//calcVrms kernel doesn't actually calculate the RMS velocity - Take square root to get Vrms
-	stats[0].Vrms = sqrt(stats[0].Vrms);
+	// Calculating Derived Statistics
 	stats[0].lambda = sqrt( 15.0*nu*stats[0].Vrms*stats[0].Vrms/stats[0].epsilon );
 	stats[0].eta = sqrt(sqrt(nu*nu*nu/stats[0].epsilon));
 	stats[0].l = 3*PI/4*stats[0].l/stats[0].KE;
 	
 	// Save data to HDD
 	saveStatsData(c, stats[0] );    // Using 0 index to send aggregate data collected in first index
+	saveYprofiles(c, Yprofile );
 	
 	return;
 }
 /*
-int main()
-{
-// Function to calculate the relevant turbulent statistics of the flow at each time step.
-
-// Set GPU's to use and list device properties
-	int n, nGPUs;
-	// Query number of devices attached to host
-	nGPUs = 1;//cudaGetDeviceCount(&nGPUs);
-	// List properties of each device
-	displayDeviceProps(nGPUs);
-
-	printf("Running calcStats_mgpu using %d GPUs on a %dx%dx%d grid.\n",nGPUs,NX,NY,NZ);
-
-	int i, c;
-
-	// Split data according to number of GPUs
-	int NX_per_GPU[nGPUs], NY_per_GPU[nGPUs], start_x[nGPUs], start_y[nGPUs];
-	splitData(nGPUs, NX, NX_per_GPU, start_x);
-	splitData(nGPUs, NY, NY_per_GPU, start_y);
-
-	// Declare array of pointers to hold cuFFT plans
-	cufftHandle *plan2d;
-	cufftHandle *invplan2d;
-	cufftHandle *plan1d;
-    size_t *worksize_f, *worksize_i;
-    cufftDoubleComplex **workspace;
-
-	// Allocate memory for cuFFT plans
-	// Allocate pinned memory on the host side that stores array of pointers
-	cudaHostAlloc((void**)&plan2d, nGPUs*sizeof(cufftHandle), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&invplan2d, nGPUs*sizeof(cufftHandle), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&plan1d, nGPUs*sizeof(cufftHandle), cudaHostAllocMapped);
-    cudaHostAlloc((void**)&worksize_f, nGPUs*sizeof(size_t *), cudaHostAllocMapped);
-    cudaHostAlloc((void**)&worksize_i, nGPUs*sizeof(size_t *), cudaHostAllocMapped);
-    cudaHostAlloc((void**)&workspace, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-
-    // Create plans for cuFFT on each GPU
-    plan1dFFT(nGPUs, plan1d);
-    plan2dFFT(nGPUs, NX_per_GPU, worksize_f, worksize_i, workspace, plan2d, invplan2d);
-
-	// Allocate memory on host
-	double **h_u;
-	double **h_v;
-	double **h_w;
-	double **h_z;
-
-	h_u = (double **)malloc(sizeof(double *)*nGPUs);
-	h_v = (double **)malloc(sizeof(double *)*nGPUs);
-	h_w = (double **)malloc(sizeof(double *)*nGPUs);
-	h_z = (double **)malloc(sizeof(double *)*nGPUs);
-
-	for(n=0; n<nGPUs; ++n){
-		h_u[n] = (double *)malloc(sizeof(complex double)*NX_per_GPU[n]*NY*NZ2);
-		h_v[n] = (double *)malloc(sizeof(complex double)*NX_per_GPU[n]*NY*NZ2);
-		h_w[n] = (double *)malloc(sizeof(complex double)*NX_per_GPU[n]*NY*NZ2);
-		h_z[n] = (double *)malloc(sizeof(complex double)*NX_per_GPU[n]*NY*NZ2);
-	}
-
-	// Allocate host memory for the statistics
-	double *h_Vrms;
-	double *h_KE;
-	double *h_epsilon;
-	double *h_eta;
-	double *h_l;
-	double *h_lambda;
-	double *h_chi;
-
-	h_Vrms = (double *)malloc(sizeof(double)*size_Stats);
-	h_KE = (double *)malloc(sizeof(double)*size_Stats);
-	h_epsilon = (double *)malloc(sizeof(double)*size_Stats);
-	h_eta = (double *)malloc(sizeof(double)*size_Stats);
-	h_l = (double *)malloc(sizeof(double)*size_Stats);
-	h_lambda = (double *)malloc(sizeof(double)*size_Stats);
-	h_chi = (double *)malloc(sizeof(double)*size_Stats);
-	
-	// Declare variables
-	double **k;
-	double **Vrms;
-	double **epsilon;
-	double **KE;
-	double **eta;
-	double **l;
-	double **lambda;
-	double **chi;
-	// double **T4;
-	// double **T5;
-	// double **T5a;
-	// double **T5b;
-
-	cufftDoubleReal **u;
-	cufftDoubleReal **v;
-	cufftDoubleReal **w;
-	cufftDoubleReal **z;
-
-	cufftDoubleComplex **uhat;
-	cufftDoubleComplex **vhat;
-	cufftDoubleComplex **what;
-	cufftDoubleComplex **zhat;
-
-	cufftDoubleComplex **temp;
-	cufftDoubleComplex **temp_reorder;
-	cufftDoubleComplex **temp_advective;
-
-	// Allocate pinned memory on the host side that stores array of pointers
-	cudaHostAlloc((void**)&k, nGPUs*sizeof(double *), cudaHostAllocMapped);
-
-	cudaHostAlloc((void**)&uhat, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&vhat, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&what, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&zhat, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-
-	cudaHostAlloc((void**)&temp, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&temp_reorder, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&temp_advective, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-		
-	cudaHostAlloc((void**)&Vrms, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&KE, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&epsilon, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&eta, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&l, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&lambda, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	cudaHostAlloc((void**)&chi, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
-	
-	// Allocate memory for arrays
-	for (n = 0; n<nGPUs; ++n){
-		cudaSetDevice(n);
-
-		checkCudaErrors( cudaMalloc((void **)&k[n], sizeof(double)*NX ) );
-
-		checkCudaErrors( cudaMalloc((void **)&uhat[n], sizeof(cufftDoubleComplex)*NX_per_GPU[n]*NY*NZ2) ); 
-		checkCudaErrors( cudaMalloc((void **)&vhat[n], sizeof(cufftDoubleComplex)*NX_per_GPU[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&what[n], sizeof(cufftDoubleComplex)*NX_per_GPU[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&zhat[n], sizeof(cufftDoubleComplex)*NX_per_GPU[n]*NY*NZ2) );
-
-		checkCudaErrors( cudaMalloc((void **)&temp[n], sizeof(cufftDoubleComplex)*NX_per_GPU[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&temp_reorder[n], sizeof(cufftDoubleComplex)*NX_per_GPU[n]*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&temp_advective[n], sizeof(cufftDoubleComplex)*NX_per_GPU[n]*NY*NZ2) );
-		
-		checkCudaErrors( cudaMallocManaged((void **)&Vrms[n], sizeof(double)*size_Stats) );
-		checkCudaErrors( cudaMallocManaged((void **)&KE[n], sizeof(double)*size_Stats) );
-		checkCudaErrors( cudaMallocManaged((void **)&epsilon[n], sizeof(double)*size_Stats) );
-		checkCudaErrors( cudaMallocManaged((void **)&eta[n], sizeof(double)*size_Stats) );
-		checkCudaErrors( cudaMallocManaged((void **)&l[n], sizeof(double)*size_Stats) );
-		checkCudaErrors( cudaMallocManaged((void **)&lambda[n], sizeof(double)*size_Stats) );
-		checkCudaErrors( cudaMallocManaged((void **)&chi[n], sizeof(double)*size_Stats) );
-	
-	// cudaMallocManaged(&T4, sizeof(double)*size_Stats);
-	// cudaMallocManaged(&T5, sizeof(double)*size_Stats);
-	// cudaMallocManaged(&T5a, sizeof(double)*size_Stats);
-	// cudaMallocManaged(&T5b, sizeof(double)*size_Stats);
-		printf("Memory allocated on Device #%d\n", n);
-	}
-
-	// Set pointers for real arrays
-	u = (cufftDoubleReal **)uhat;
-	v = (cufftDoubleReal **)vhat;
-	w = (cufftDoubleReal **)what;
-	z = (cufftDoubleReal **)zhat;
-
-	// printf("Starting Timer...\n");
-	// StartTimer();
-
-	// Setup wavespace domain
-	initializeWaveNumbers(nGPUs, k);
-
-/////////////////////////////////////////////////////////////////////////////////////
-// Calculate Turbulence statistics
-/////////////////////////////////////////////////////////////////////////////////////
-
-// Enter timestepping loop
-	for (i = 0; i < size_Stats; ++i){
-
-		// Calculate cation number based on how often data is saved
-		c = i*n_save;
-
-		// Import data to GPU memory and distribute across GPUs for calculations
-		importFields_mgpu(nGPUs, start_x, NX_per_GPU, c, h_u, h_v, h_w, h_z, u, v, w, z);
-		printf("Data imported successfully!\n");
-
-		for(n=0; n<nGPUs; ++n){
-			cudaSetDevice(n);
-			cudaDeviceSynchronize();
-		}
-
-		// Transform real data to Fourier space
-		forwardTransform(plan1d, plan2d, nGPUs, NX_per_GPU, start_x, NY_per_GPU, start_y, temp, temp_reorder, u);
-		forwardTransform(plan1d, plan2d, nGPUs, NX_per_GPU, start_x, NY_per_GPU, start_y, temp, temp_reorder, v);
-		forwardTransform(plan1d, plan2d, nGPUs, NX_per_GPU, start_x, NY_per_GPU, start_y, temp, temp_reorder, w);
-		forwardTransform(plan1d, plan2d, nGPUs, NX_per_GPU, start_x, NY_per_GPU, start_y, temp, temp_reorder, z);
-
-		for(n=0; n<nGPUs; ++n){
-			cudaSetDevice(n);
-			cudaDeviceSynchronize();
-		}
-
-		// Calculate RMS velocity
-		calcTurbStats_mgpu(i, nGPUs, NY_per_GPU, start_y, k, uhat, vhat, what, zhat, Vrms, KE, epsilon, l, eta, lambda, chi);
-
-		printf("The RMS velocity is %g \n", Vrms[0][i]);
-		printf("The Kinetic Energy is %g \n", KE[0][i]);
-		printf("The Dissipation Rate is %g \n", epsilon[0][i]);
-		printf("The Integral Length Scale is %g \n", l[0][i]);
-		printf("The Kolmogorov Length Scale is %g \n", eta[0][i]);
-		printf("The Taylor Micro Scale is %g \n", lambda[0][i]);
-		printf("The Scalar Dissipation is %g \n", chi[0][i]);
-	}
-	// Exit timestepping loop
-
-	// Copy turbulent results from GPU to CPU memory
-	printf("Copy results to CPU memory...\n");
-
-	cudaSetDevice(0);
-	cudaDeviceSynchronize();
-
-	checkCudaErrors( cudaMemcpyAsync(h_Vrms, Vrms[0], sizeof(double)*size_Stats, cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_KE, KE[0], sizeof(double)*size_Stats, cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_epsilon, epsilon[0], sizeof(double)*size_Stats, cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_eta, eta[0], sizeof(double)*size_Stats, cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_l, l[0], sizeof(double)*size_Stats, cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_lambda, lambda[0], sizeof(double)*size_Stats, cudaMemcpyDefault) );
-	checkCudaErrors( cudaMemcpyAsync(h_chi, chi[0], sizeof(double)*size_Stats, cudaMemcpyDefault) );
-
-	// Save turbulence data
-	writeStats("Vrms", h_Vrms, .0);
-	writeStats("epsilon", h_epsilon, .0);
-	writeStats("eta", h_eta, .0);
-	writeStats("KE", h_KE, .0);
-	writeStats("lambda", h_lambda, .0);
-	writeStats("l", h_l, .0);
-	writeStats("chi", h_chi, .0);
-
-	// Deallocate resources
-	for(n = 0; n<nGPUs; ++n){
-		cufftDestroy(plan1d[n]);
-		cufftDestroy(plan2d[n]);
-		cufftDestroy(invplan2d[n]);
-	}
-
-	free(h_Vrms);
-	free(h_KE);
-	free(h_epsilon);
-	free(h_eta);
-	free(h_l);
-	free(h_lambda);
-	free(h_chi);
-
-
-	// Deallocate GPU memory
-	for(n = 0; n<nGPUs; ++n){
-		cudaSetDevice(n);
-
-    cudaFree(plan1d);
-    cudaFree(plan2d);
-    cudaFree(invplan2d);
-    cudaFree(worksize_f);
-    cudaFree(worksize_i);
-    cudaFree(workspace);
-
-		cudaFree(k[n]);
-
-		cudaFree(uhat[n]);
-		cudaFree(vhat[n]);
-		cudaFree(what[n]);
-		cudaFree(zhat[n]);
-
-		cudaFree(temp[n]);
-		cudaFree(temp_reorder[n]);
-		cudaFree(temp_advective[n]);
-		
-	}
-	
-	// Deallocate pointer arrays on host memory
-	cudaFreeHost(k);
-
-	cudaFreeHost(uhat);
-	cudaFreeHost(vhat);
-	cudaFreeHost(what);
-	cudaFreeHost(zhat);
-
-	cudaFreeHost(temp);
-	cudaFreeHost(temp_reorder);
-	cudaFreeHost(temp_advective);
-
-	cudaFreeHost(Vrms);
-	cudaFreeHost(KE);
-	cudaFreeHost(epsilon);
-	cudaFreeHost(eta);
-	cudaFreeHost(l);
-	cudaFreeHost(lambda);
-	cudaFreeHost(chi);
-
-	cudaFreeHost(plan1d);
-	cudaFreeHost(plan2d);
-	cudaFreeHost(invplan2d);
-
-/////////////////////////////////////////////////////////////////////////////////////
-// Finished calculating turbulence statistics
-/////////////////////////////////////////////////////////////////////////////////////
-
 
 /////////////////////////////////////////////////////////////////////////////////////
 // Calculate Flame Surface properties

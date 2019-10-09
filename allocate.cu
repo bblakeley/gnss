@@ -14,6 +14,7 @@ void allocate_memory(){
 	extern gpuinfo gpu;	
 	extern fftinfo fft;
 	extern statistics *stats;	
+	extern profile Yprofile;
 
   extern double **k;
 
@@ -27,7 +28,7 @@ void allocate_memory(){
 	// Make local copy of number of GPUs (for readability)
 	nGPUs = gpu.nGPUs;
 	printf("Allocating data on %d GPUs!\n",nGPUs);
-
+	
 	// Allocate pinned memory on the host side that stores array of pointers for FFT operations
 	cudaHostAlloc((void**)&fft,         		 sizeof(fftinfo),   					       cudaHostAllocMapped);		
 	cudaHostAlloc((void**)&fft.p1d,    			 nGPUs*sizeof(cufftHandle *), 			 cudaHostAllocMapped);		// Allocate memory for array of cufftHandles to store nGPUs worth 1d plans
@@ -38,6 +39,13 @@ void allocate_memory(){
 	cudaHostAlloc((void**)&fft.wspace, 			 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Array of pointers to FFT workspace on each device
 	cudaHostAlloc((void**)&fft.temp, 				 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Array of pointers to scratch (temporary) memory on each device
 	cudaHostAlloc((void**)&fft.temp_reorder, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Same as above, different temp variable
+	
+	// Allocate memory on host to store averaged profile data
+	cudaHostAlloc((void**)&Yprofile,         sizeof(profile),   					       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.u,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.v,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.w,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.s,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
 
 	// Allocate memory on host
 	h_vel.u = (double **)malloc(sizeof(double *)*nGPUs);
@@ -105,6 +113,12 @@ void allocate_memory(){
 		
 		// Statistics
 		checkCudaErrors( cudaMallocManaged( (void **)&stats[n], sizeof(statistics) ));
+		
+		// Averaged Profiles
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.u[n], sizeof(double)*NY) );
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.v[n], sizeof(double)*NY) );
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.w[n], sizeof(double)*NY) );
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.s[n], sizeof(double)*NY) );
 
 		printf("Data allocated on Device %d\n", n);
 	}
@@ -147,6 +161,11 @@ void allocate_memory(){
 		checkCudaErrors( cudaMemset(rhs_old.s[n], 0, sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 
 		checkCudaErrors( cudaMemset(temp_advective[n], 0, sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
+		
+		checkCudaErrors( cudaMemset(Yprofile.u[n], 0, sizeof(double)*NY) );
+		checkCudaErrors( cudaMemset(Yprofile.v[n], 0, sizeof(double)*NY) );
+		checkCudaErrors( cudaMemset(Yprofile.w[n], 0, sizeof(double)*NY) );
+		checkCudaErrors( cudaMemset(Yprofile.s[n], 0, sizeof(double)*NY) );
 	}
 
 	return;
@@ -160,6 +179,7 @@ void deallocate_memory(){
 	extern fftinfo fft;
 	extern statistics h_stats;
 	extern statistics *stats;	
+	extern profile Yprofile;
 
   extern double **k;
 
@@ -206,6 +226,11 @@ void deallocate_memory(){
 		cudaFree(temp_advective[n]);
 
 		cudaFree(&stats[n]);
+		// Averaged Profiles
+		cudaFree(Yprofile.u[n]);
+		cudaFree(Yprofile.v[n]);
+		cudaFree(Yprofile.w[n]);
+		cudaFree(Yprofile.s[n]);
 
 		// Destroy cufft plans
 		cufftDestroy(fft.p1d[n]);
@@ -247,6 +272,13 @@ void deallocate_memory(){
 	cudaFreeHost(rhs_old.sh);
 
 	cudaFreeHost(stats);
+	
+	// Averaged Profiles
+	cudaFreeHost(Yprofile.u);
+	cudaFreeHost(Yprofile.v);
+	cudaFreeHost(Yprofile.w);
+	cudaFreeHost(Yprofile.s);
+	cudaFreeHost(&Yprofile);
 
 	// Deallocate memory on CPU
 	free(h_vel.u);

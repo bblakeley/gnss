@@ -91,7 +91,7 @@ int main (void)
 	int n, nGPUs;
 	// Query number of devices attached to host
 	// cudaGetDeviceCount(&nGPUs);
-	nGPUs=1;
+	nGPUs=2;
 
 	printf("Welcome to the GPU-based Navier-Stokes Solver! Configuration: \n"
 		"Number of GPUs = %d \n "
@@ -130,18 +130,19 @@ int main (void)
 	initializeWaveNumbers(gpu, k);
 
 	// Launch CUDA kernel to initialize velocity field
-	// importVelocity(gpu, h_vel, vel);
-	// importScalar(gpu, h_vel, vel);
+	importVelocity(gpu, h_vel, vel);
+	importScalar(gpu, h_vel, vel);
 	
   // initializeTaylorGreen(gpu,vel);
-	initializeJet_Superposition(fft, gpu, k, h_vel, vel, rhs);	// Does not require importData
+	// initializeJet_Superposition(fft, gpu, k, h_vel, vel, rhs);	// Does not require importData
 	// initializeJet_Convolution(fft, gpu, h_vel, vel, rhs);  // Does not require importData
 
 	// Save Initial Data to file (t = 0)
 	// Copy data to host   
 	save3Dfields(c, fft, gpu, h_vel, vel);
+	save2Dfields(c, fft, gpu, h_vel, vel);
+	
 	synchronizeGPUs(nGPUs);
-	save2Dfields(c, fft, gpu, 'z', h_vel.s, vel.sh);
 
 	// Transform velocity to fourier space for timestepping
 	forwardTransform(fft, gpu, vel.u);
@@ -153,7 +154,7 @@ int main (void)
 	deAlias(gpu, k, vel);
 
 	// Calculate statistics at initial condition
-	calcTurbStats_mgpu(0, gpu, fft, k, vel, stats);
+	calcTurbStats_mgpu(0, gpu, fft, k, vel, rhs, stats, Yprofile);
 	
 	// Synchronize GPUs before entering timestepping loop
 	synchronizeGPUs(nGPUs);
@@ -189,7 +190,7 @@ int main (void)
 		// Calculate bulk turbulence statistics and print to screen
 		//==============================================================================================
 		if(c % n_stats == 0){
-			calcTurbStats_mgpu(c, gpu, fft, k, vel, stats);
+			calcTurbStats_mgpu(c, gpu, fft, k, vel, rhs, stats, Yprofile);
 			// Get elapsed time from Timer
 			steptime = GetTimer();
 		
@@ -199,7 +200,7 @@ int main (void)
 		}
 
 		if(c % n_vis == 0){
-			save2Dfields(c, fft, gpu, 'z', h_vel.s, vel.sh);
+			save2Dfields(c, fft, gpu, h_vel, vel);
 		}
 
 		// Synchronize GPUs before moving to next timestep

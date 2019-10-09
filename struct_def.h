@@ -21,6 +21,11 @@ typedef struct statistics{
 	double area_scalar;			  // Area of the iso-scalar surface
 	double area_tnti;				  // Area of the iso-enstrophy surface (Turbulent/non-turbulent interface)
 	double energy_spect;			// Spectral energy in spherical wave number shells
+	double omega;             // Volume average of vorticity magnitude
+	double omega_x;           // Volume average of x-component of vorticity
+	double omega_y;           // Volume average of y-component of vorticity
+	double omega_z;           // Volume average of z-component of vorticity
+	double tmp;              // Temporary array used to store intermediate values during multi-gpu computations
 }statistics;
 
 typedef struct fftinfo{
@@ -64,5 +69,13 @@ typedef struct gridinfo{
 	double *ky;					// Vector of wave numbers in y-direction
 	double *kz;					// Vector of wave numbers in z-direction
 }gridinfo;
+
+typedef struct profile{
+  double n;          // Length of profile vector
+  double **u;        // profile of U component of velocity
+  double **v;
+  double **w;
+  double **s;
+}profile;
 
 #endif

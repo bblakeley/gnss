@@ -15,6 +15,9 @@
 #include "iofuncs.h"
 #include "fftfuncs.h"
 
+//============================================================================================
+// Print to screen
+//============================================================================================
 void displayDeviceProps(int numGPUs){
 	int i, driverVersion = 0, runtimeVersion = 0;
 
@@ -47,6 +50,71 @@ void displayDeviceProps(int numGPUs){
 	return;
 }
 
+
+void printTurbStats(int c, double steptime, statistics stats)
+{
+
+	if(c==0)
+		printf("\n Entering time-stepping loop...\n");
+	// if(c%20==0)			// Print new header every few timesteps
+		printf(" iter |   u'  |   k   |  eps  |   l   |  eta  | lambda | chi  | Area | time \n"
+			"-----------------------------------------------------------\n");
+	// Print statistics to screen
+	printf(" %d  | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | % 2.3f | %2.3f  \n",
+			c*n_stats, stats.Vrms, stats.KE, stats.epsilon, stats.l, stats.eta, stats.lambda, stats.chi, stats.area_scalar, steptime/1000);
+
+	return;
+}
+
+void printIterTime(int c, double steptime)
+{
+	// Print iteration time to screen
+	printf(" %d  |       |       |       |       |       |       |       |       |% 2.3f \n",
+			c,steptime/1000);
+
+	return;
+}
+
+//============================================================================================
+// Write to file
+//============================================================================================
+
+void writeYprofiles(const int c, const char* name, double *data)
+{
+  char title[0x100];
+	FILE *out;
+	
+	snprintf(title, sizeof(title), "%sYprofiles/%s.%i", rootdir, name, c);
+	printf("Writing data to %s \n", title);
+	out = fopen(title, "wb");
+	
+	fwrite(data, sizeof(double), NY, out);
+	
+	fclose(out);
+
+  return;
+}
+
+void saveYprofiles(const int c, profile data)
+{ // Save mean profiles to file
+  struct stat st = {0};
+  char title[0x100];
+  
+	if(c==0){  // Create directory for statistics if one doesn't already exist
+	  snprintf(title, sizeof(title), "%s%s", rootdir, "Yprofiles/");
+    if (stat(title, &st) == -1) {  
+      mkdir(title, 0700);
+    }
+  }
+  
+  writeYprofiles(c, "u_mean", data.u[0]);
+  writeYprofiles(c, "v_mean", data.v[0]);
+  writeYprofiles(c, "w_mean", data.w[0]);
+  writeYprofiles(c, "s_mean", data.s[0]);
+  
+  return;
+}
+
 void writeDouble(double v, FILE *f)  {
 	fwrite((void*)(&v), sizeof(v), 1, f);
 
@@ -71,6 +139,34 @@ void writeStats(const int c, const char* name, double in) {
 	fclose(out);
 }
 
+void saveStatsData(const int c, statistics stats)
+{
+  struct stat st = {0};
+  char title[0x100];
+  
+	if(c==0){  // Create directory for statistics if one doesn't already exist
+	  snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
+    if (stat(title, &st) == -1) {  
+      mkdir(title, 0700);
+    }
+  }
+
+	// Save statistics data
+	writeStats(c, "Vrms",    stats.Vrms);
+	writeStats(c, "epsilon", stats.epsilon);
+	writeStats(c, "eta",     stats.eta);
+	writeStats(c, "KE",      stats.KE);
+	writeStats(c, "lambda",  stats.lambda);
+	writeStats(c, "l",       stats.l);
+	writeStats(c, "chi",     stats.chi);
+	writeStats(c, "area_z",  stats.area_scalar);
+	writeStats(c, "omega_x", stats.omega_x);
+	writeStats(c, "omega_y", stats.omega_y);
+	writeStats(c, "omega_z", stats.omega_z);
+
+	return;
+}
+
 void writexyfields( gpuinfo gpu, const int iter, const char var, double **in, const int zplane ) 
 {
 	int i, j, n, idx;
@@ -88,7 +184,6 @@ void writexyfields( gpuinfo gpu, const int iter, const char var, double **in, co
 			}
 		}			
 	}
-
 
 	fclose(out);
 
@@ -112,7 +207,6 @@ void writexzfields( gpuinfo gpu, const int iter, const char var, double **in, co
 			fwrite((void *)&in[n][idx], sizeof(double), NZ, out);  // Write each k vector at once
 		}			
 	}
-
 
 	fclose(out);
 
@@ -142,7 +236,7 @@ void writeyzfields( gpuinfo gpu, const int iter, const char var, double **in, co
 	return;
 }
 
-void save2Dfields(int c, fftinfo fft, gpuinfo gpu, const char var, double **h_f, cufftDoubleComplex **fhat)
+void save2Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel)
 {
 	int n;
 	char title[0x100];
@@ -153,24 +247,50 @@ void save2Dfields(int c, fftinfo fft, gpuinfo gpu, const char var, double **h_f,
     if (stat(title, &st) == -1) {
       mkdir(title, 0700);
     }
+    
+    // Copy data to host   
+	  for(n=0; n<gpu.nGPUs; ++n){
+		  cudaSetDevice(n);
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.u[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+	  }
+    
+    writexyfields( gpu, c, 'u', h_vel.u, NZ/2);
+    writexyfields( gpu, c, 'v', h_vel.v, NZ/2);
+    writexyfields( gpu, c, 'w', h_vel.w, NZ/2);
+    writexyfields( gpu, c, 'z', h_vel.s, NZ/2);
+    
   }
-  
-	// Inverse Fourier Transform the velocity back to physical space for saving to file.
-	inverseTransform(fft, gpu, fhat);
+  else{
+		// Inverse Fourier Transform the velocity back to physical space for saving to file.
+		inverseTransform(fft, gpu, vel.uh);
+		inverseTransform(fft, gpu, vel.vh);
+		inverseTransform(fft, gpu, vel.wh);
+		inverseTransform(fft, gpu, vel.sh);
 
-	// Copy data to host   
-	for(n=0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n);
-		cudaDeviceSynchronize();
-		checkCudaErrors( cudaMemcpyAsync(h_f[n], (cufftDoubleReal**) fhat[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		// Copy data to host   
+		for(n=0; n<gpu.nGPUs; ++n){
+			cudaSetDevice(n);
+			checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.u[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		}
+
+		// Write data to file
+	  writexyfields(gpu, c, 'u', h_vel.u, NZ/2);
+		writexyfields(gpu, c, 'v', h_vel.v, NZ/2);
+		writexyfields(gpu, c, 'w', h_vel.w, NZ/2);
+		writexyfields(gpu, c, 'z', h_vel.s, NZ/2);
+
+		// Transform fields back to fourier space for timestepping
+		forwardTransform(fft, gpu, vel.u);
+		forwardTransform(fft, gpu, vel.v);
+		forwardTransform(fft, gpu, vel.w);
+		forwardTransform(fft, gpu, vel.s);
 	}
-
-	// Write data to file
-	writexyfields( gpu, c, var, h_f, NZ/2);
-	// XZ and YZ directions not finished yet!
-
-	// Transform fields back to fourier space for timestepping
-	forwardTransform(fft, gpu, (cufftDoubleReal**) fhat);
 
 	return;
 }
@@ -217,7 +337,6 @@ void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 		printf("Saving initial data...\n");
 		for(n=0; n<gpu.nGPUs; ++n){
 			cudaSetDevice(n);
-			cudaDeviceSynchronize();
 			checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.u[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
@@ -267,6 +386,10 @@ void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 	}
 
 }
+
+//============================================================================================
+// Import from file
+//============================================================================================
 
 int readDataSize(FILE *f){
 	int bin;
@@ -369,57 +492,6 @@ void importData(gpuinfo gpu, fielddata h_vel, fielddata vel) // Deprecated
 	importVelocity(gpu, h_vel, vel);
 
 	importScalar(gpu, h_vel, vel);
-
-	return;
-}
-
-void printTurbStats(int c, double steptime, statistics stats)
-{
-
-	if(c==0)
-		printf("\n Entering time-stepping loop...\n");
-	// if(c%20==0)			// Print new header every few timesteps
-		printf(" iter |   u'  |   k   |  eps  |   l   |  eta  | lambda | chi  | Area | time \n"
-			"-----------------------------------------------------------\n");
-	// Print statistics to screen
-	printf(" %d  | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | % 2.3f | %2.3f  \n",
-			c*n_stats, stats.Vrms, stats.KE, stats.epsilon, stats.l, stats.eta, stats.lambda, stats.chi, stats.area_scalar, steptime/1000);
-
-	return;
-}
-
-void printIterTime(int c, double steptime)
-{
-	// Print iteration time to screen
-	printf(" %d  |       |       |       |       |       |       |       |       |% 2.3f \n",
-			c,steptime/1000);
-
-	return;
-}
-
-void saveStatsData(const int c, statistics stats)
-{
-  struct stat st = {0};
-  char title[0x100];
-
-	
-	if(c==0){  // Create directory for statistics if one doesn't already exist
-	  snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
-    if (stat(title, &st) == -1) {  
-      mkdir(title, 0700);
-    }
-  }
-
-	// Save statistics data
-	printf("Saving results to file...\n");
-	writeStats(c, "Vrms",    stats.Vrms);
-	writeStats(c, "epsilon", stats.epsilon);
-	writeStats(c, "eta",     stats.eta);
-	writeStats(c, "KE",      stats.KE);
-	writeStats(c, "lambda",  stats.lambda);
-	writeStats(c, "l",       stats.l);
-	writeStats(c, "chi",     stats.chi);
-	writeStats(c, "area_z",  stats.area_scalar);
 
 	return;
 }

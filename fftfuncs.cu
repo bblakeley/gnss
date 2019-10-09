@@ -52,12 +52,7 @@ void organizeData_2d(cufftDoubleComplex *in, cufftDoubleComplex *out, int N, int
 	const int k = blockIdx.y * blockDim.y + threadIdx.y;
 	if(i >= N || k >= NZ2) return;
 
-
-
-		// printf("For thread %d, indexing begins at local index of %d, which maps to temp at location %d\n", k, (k+ NZ*j), k);
-		out[k + i*NZ2] = in[k + NZ2*j + i*NY*NZ2];
-
-
+	out[k + i*NZ2] = in[k + NZ2*j + i*NY*NZ2];
 
 	return;
 }
@@ -69,55 +64,21 @@ void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex
 
 	int n, j, local_idx_dst, dstNum;
 
-	// for (n=0; n<gpu.nGPUs; ++n){
-	// 	printf("gpu.ny(%d) = %d \n", n, gpu.ny[n]);
-	// 	printf("gpu.start_y(%d) = %d \n", n, gpu.start_y[n]);
-	// }
-
-   
-//	for(j=0; j<NY; ++j){
-//		for(n=0; n<gpu.nGPUs; ++n){
-//			cudaSetDevice(n); 
-
-//			// Determine which GPU to send data to based on y-index, j
-//			dstNum = (j*gpu.nGPUs)/NY;
-//			// printf("dstNum = %d\n",dstNum);
-
-//			// Open kernel that grabs all data 
-//			// organizeData<<<divUp(NZ2,TX), TX>>>(src[n], temp[n], NX/gpu.nGPUs, j);
-//			// organizeData_coalesced<<<divUp(NX/gpu.nGPUs,TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
-//			organizeData_coalesced<<<divUp(gpu.nx[n],TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
-
-//			// local_idx_dst = n*NX/gpu.nGPUs*NZ2 + (j - dstNum*NY/gpu.nGPUs)*NZ2*NX;
-//			local_idx_dst = gpu.start_x[n]*NZ2 + (j - gpu.start_y[dstNum])*NZ2*NX;
-//			// printf("For j = %d, GPU = %d, the local idx at destination = %d \n",j,gpu.gpunum[n], local_idx_dst);
-
-//			checkCudaErrors( cudaMemcpyAsync(&dst[dstNum][local_idx_dst], temp[n], sizeof(cufftDoubleComplex)*NZ2*gpu.nx[n], cudaMemcpyDefault) );
-//			// printf("Offending values: dstNum = %d, local index = %d \n",dstNum, local_idx_dst);
-//		}
-//	}
-
 	for(j=0; j<NY; ++j){
 		for(n=0; n<gpu.nGPUs; ++n){
 			cudaSetDevice(n); 
 
 			// Determine which GPU to send data to based on y-index, j
 			dstNum = (j*gpu.nGPUs)/NY;
-			// printf("dstNum = %d\n",dstNum);
 
       const dim3 blockSize(TX, TZ, 1);
 		  const dim3 gridSize(divUp(NX, TX), divUp(NZ2, TZ), 1);
 		  // Open kernel that grabs all data 
 		  organizeData_2d<<<gridSize,blockSize>>>(src[n], temp[n], gpu.nx[n], j);
 			
-			//organizeData_coalesced<<<divUp(gpu.nx[n],TX), TX>>>(src[n], temp[n], gpu.nx[n], j);
-
-			// local_idx_dst = n*NX/gpu.nGPUs*NZ2 + (j - dstNum*NY/gpu.nGPUs)*NZ2*NX;
 			local_idx_dst = gpu.start_x[n]*NZ2 + (j - gpu.start_y[dstNum])*NZ2*NX;
-			// printf("For j = %d, GPU = %d, the local idx at destination = %d \n",j,gpu.gpunum[n], local_idx_dst);
 
-			checkCudaErrors( cudaMemcpyAsync(&dst[dstNum][local_idx_dst], temp[n], sizeof(cufftDoubleComplex)*NZ2*gpu.nx[n], cudaMemcpyDefault) );
-			// printf("Offending values: dstNum = %d, local index = %d \n",dstNum, local_idx_dst);
+			checkCudaErrors( cudaMemcpyAsync(&dst[dstNum][local_idx_dst], temp[n], sizeof( cufftDoubleComplex )*NZ2*gpu.nx[n], cudaMemcpyDefault) );
 		}
 	}
 
