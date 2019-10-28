@@ -130,11 +130,11 @@ int main (void)
 	initializeWaveNumbers(gpu, k);
 
 	// Launch CUDA kernel to initialize velocity field
-	importVelocity(gpu, h_vel, vel);
-	importScalar(gpu, h_vel, vel);
+	//importVelocity(gpu, h_vel, vel);
+	//importScalar(gpu, h_vel, vel);
 	
   // initializeTaylorGreen(gpu,vel);
-	// initializeJet_Superposition(fft, gpu, k, h_vel, vel, rhs);	// Does not require importData
+	initializeJet_Superposition(fft, gpu, k, h_vel, vel, rhs);	// Does not require importData
 	// initializeJet_Convolution(fft, gpu, h_vel, vel, rhs);  // Does not require importData
 
 	// Save Initial Data to file (t = 0)
