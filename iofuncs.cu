@@ -57,11 +57,11 @@ void printTurbStats(int c, double steptime, statistics stats)
 	if(c==0)
 		printf("\n Entering time-stepping loop...\n");
 	// if(c%20==0)			// Print new header every few timesteps
-		printf(" iter |   u'  |   k   |  eps  |   l   |  eta  | lambda | chi  | Area | |omega| | time \n"
+		printf(" iter |   u'  |   k   |  eps  |   l   |  eta  | lambda | chi  | |omega| | time \n"
 			"-----------------------------------------------------------\n");
 	// Print statistics to screen
-	printf(" %d  | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | % 2.3f |  %2.3f  | %2.3f  \n",
-			c*n_stats, stats.Vrms, stats.KE, stats.epsilon, stats.l, stats.eta, stats.lambda, stats.chi, stats.area_scalar, stats.omega_z, steptime/1000);
+	printf(" %d  | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | %2.3f | % 2.3f | %2.3f  \n",
+			c*n_stats, stats.Vrms, stats.KE, stats.epsilon, stats.l, stats.eta, stats.lambda, stats.chi, stats.omega_z, steptime/1000);
 
 	return;
 }
@@ -85,7 +85,7 @@ void writeYprofiles(const int c, const char* name, double *data)
 	FILE *out;
 	
 	snprintf(title, sizeof(title), "%sYprofiles/%s.%i", rootdir, name, c);
-	printf("Writing data to %s \n", title);
+	//printf("Writing data to %s \n", title);
 	out = fopen(title, "wb");
 	
 	fwrite(data, sizeof(double), NY, out);
@@ -111,6 +111,10 @@ void saveYprofiles(const int c, profile data)
   writeYprofiles(c, "v_mean", data.v[0]);
   writeYprofiles(c, "w_mean", data.w[0]);
   writeYprofiles(c, "s_mean", data.s[0]);
+  writeYprofiles(c, "uu_mean", data.uu[0]);
+  writeYprofiles(c, "vv_mean", data.vv[0]);
+  writeYprofiles(c, "ww_mean", data.ww[0]);
+  writeYprofiles(c, "ss_mean", data.ss[0]);
   
   return;
 }
@@ -126,7 +130,7 @@ void writeStats(const int c, const char* name, double in) {
 	FILE *out;
 	
 	snprintf(title, sizeof(title), "%sstats/%s", rootdir, name);
-	printf("Writing data to %s \n", title);
+	//printf("Writing data to %s \n", title);
 	if(c==0){ // First timestep, create new file
 	  out = fopen(title, "wb");
 	}
@@ -143,6 +147,7 @@ void saveStatsData(const int c, statistics stats)
 {
   struct stat st = {0};
   char title[0x100];
+  int i;
   
 	if(c==0){  // Create directory for statistics if one doesn't already exist
 	  snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
@@ -159,11 +164,19 @@ void saveStatsData(const int c, statistics stats)
 	writeStats(c, "lambda",  stats.lambda);
 	writeStats(c, "l",       stats.l);
 	writeStats(c, "chi",     stats.chi);
-	writeStats(c, "area_z",  stats.area_scalar);
-	writeStats(c, "omega", stats.omega);
+	writeStats(c, "omega"  , stats.omega);
 	writeStats(c, "omega_x", stats.omega_x);
 	writeStats(c, "omega_y", stats.omega_y);
 	writeStats(c, "omega_z", stats.omega_z);
+	
+	// Loop required to write statistics that depend on a second variable
+	for(i=0;i<64;++i){
+		writeStats(1, "area_z", stats.area_scalar[i]);
+	  writeStats(1, "area_omega" , stats.area_omega[i]);
+	}
+	
+  snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
+	printf("Statistics data written to %s \n", title);
 
 	return;
 }

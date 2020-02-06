@@ -386,8 +386,8 @@ void eulerKernel_mgpu(double num, int start_y, double *waveNum, cufftDoubleCompl
 	double k_sq = waveNum[i]*waveNum[i] + waveNum[(j+start_y)]*waveNum[(j+start_y)] + waveNum[k]*waveNum[k];
 
 	// Timestep in X-direction
-	fhat[idx].x = ( (1.0 - dt/2.0*k_sq/num)*fhat[idx].x + dt * rhs_f[idx].x ) / (1.0 + dt/2.0*k_sq/num);
-	fhat[idx].y = ( (1.0 - dt/2.0*k_sq/num)*fhat[idx].y + dt * rhs_f[idx].y ) / (1.0 + dt/2.0*k_sq/num);
+	fhat[idx].x = ( (1.0 - dt*k_sq*num/2.0)*fhat[idx].x + dt * rhs_f[idx].x ) / (1.0 + dt*k_sq*num/2.0);
+	fhat[idx].y = ( (1.0 - dt*k_sq*num/2.0)*fhat[idx].y + dt * rhs_f[idx].y ) / (1.0 + dt*k_sq*num/2.0);
 
 	return;
 }
@@ -405,8 +405,8 @@ void adamsBashforthKernel_mgpu(double num, int start_y, double *waveNum, cufftDo
 	double k_sq = waveNum[i]*waveNum[i] + waveNum[(j+start_y)]*waveNum[(j+start_y)] + waveNum[k]*waveNum[k];
 
 	// Timestep in X-direction
-	fhat[idx].x = ( (1.0 - dt/2.0*k_sq/num)*fhat[idx].x + dt * (1.5*rhs_f[idx].x - 0.5*rhs_f_old[idx].x) ) / (1.0 + dt/2.0*k_sq/num);
-	fhat[idx].y = ( (1.0 - dt/2.0*k_sq/num)*fhat[idx].y + dt * (1.5*rhs_f[idx].y - 0.5*rhs_f_old[idx].y) ) / (1.0 + dt/2.0*k_sq/num);
+	fhat[idx].x = ( (1.0 - dt*k_sq*num/2.0)*fhat[idx].x + dt * (1.5*rhs_f[idx].x - 0.5*rhs_f_old[idx].x) ) / (1.0 + dt*k_sq*num/2.0);
+	fhat[idx].y = ( (1.0 - dt*k_sq*num/2.0)*fhat[idx].y + dt * (1.5*rhs_f[idx].y - 0.5*rhs_f_old[idx].y) ) / (1.0 + dt*k_sq*num/2.0);
 
 	return;
 }
@@ -423,17 +423,17 @@ void timestep(const int flag, gpuinfo gpu, double **k, fielddata vel, fielddata 
 
 		if(flag){
 			// printf("Using Euler Method\n");
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.uh[n], rhs.uh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.vh[n], rhs.vh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.wh[n], rhs.wh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], k[n], vel.sh[n], rhs.sh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>(nu, gpu.start_y[n], k[n], vel.uh[n], rhs.uh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>(nu, gpu.start_y[n], k[n], vel.vh[n], rhs.vh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>(nu, gpu.start_y[n], k[n], vel.wh[n], rhs.wh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>(D,  gpu.start_y[n], k[n], vel.sh[n], rhs.sh[n]);
 		}
 		else {
 			// printf("Using A-B Method\n");
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.uh[n], rhs.uh[n], rhs_old.uh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.vh[n], rhs.vh[n], rhs_old.vh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.wh[n], rhs.wh[n], rhs_old.wh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], k[n], vel.sh[n], rhs.sh[n], rhs_old.sh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>(nu, gpu.start_y[n], k[n], vel.uh[n], rhs.uh[n], rhs_old.uh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>(nu, gpu.start_y[n], k[n], vel.vh[n], rhs.vh[n], rhs_old.vh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>(nu, gpu.start_y[n], k[n], vel.wh[n], rhs.wh[n], rhs_old.wh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>(D,  gpu.start_y[n], k[n], vel.sh[n], rhs.sh[n], rhs_old.sh[n]);
 		}
 	}
 

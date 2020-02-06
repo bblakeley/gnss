@@ -46,6 +46,10 @@ void allocate_memory(){
 	cudaHostAlloc((void**)&Yprofile.v,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
 	cudaHostAlloc((void**)&Yprofile.w,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
 	cudaHostAlloc((void**)&Yprofile.s,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.uu,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.vv,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.ww,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
+	cudaHostAlloc((void**)&Yprofile.ss,       nGPUs*sizeof(double *),    	       cudaHostAllocMapped);
 
 	// Allocate memory on host
 	h_vel.u = (double **)malloc(sizeof(double *)*nGPUs);
@@ -123,6 +127,14 @@ void allocate_memory(){
 		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.v[n], sizeof(double)*NY) );
 		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.w[n], sizeof(double)*NY) );
 		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.s[n], sizeof(double)*NY) );
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.uu[n], sizeof(double)*NY) );
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.vv[n], sizeof(double)*NY) );
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.ww[n], sizeof(double)*NY) );
+		checkCudaErrors( cudaMallocManaged( (void **)&Yprofile.ss[n], sizeof(double)*NY) );
+		
+		// Area statistics
+		checkCudaErrors( cudaMallocManaged( (void **)&stats[n].area_scalar, sizeof(double)*64) );
+		checkCudaErrors( cudaMallocManaged( (void **)&stats[n].area_omega, sizeof(double)*64) );
 
 		printf("Data allocated on Device %d\n", n);
 	}

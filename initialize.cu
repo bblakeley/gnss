@@ -171,6 +171,7 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 
 	// Initialize scalar field
 	Z[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
+	//Z[idx] = 0.5*H/(4.0*theta*2.0/H)*(1/cosh(H/(4.0*theta)*(2.0*fabs(y)/H - 1.0) ))*(1/cosh(H/(4.0*theta)*(2.0*fabs(y)/H-1.0) ));
 /*
 	// For mixing layer used in Blakeley et al., 2019 JoT
   // Create physical vectors in temporary memory
