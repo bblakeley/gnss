@@ -358,7 +358,7 @@ void dotProduct( gpudata gpu, fielddata a, fielddata b, cufftDoubleReal **result
 }
 
 __global__
-void colloidAdvectionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoubleReal *v, cufftDoubleReal *w, cufftDoubleReal *c_x, cufftDoubleReal *c_y, cufftDoubleReal *c_z, cufftDoubleReal *s_x, cufftDoubleReal *s_y, cufftDoubleReal *s_z, cufftDoubleReal *divV, double a)
+void colloidAdvectionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoubleReal *v, cufftDoubleReal *w, cufftDoubleReal *c, cufftDoubleReal *c_x, cufftDoubleReal *c_y, cufftDoubleReal *c_z, cufftDoubleReal *s_x, cufftDoubleReal *s_y, cufftDoubleReal *s_z, cufftDoubleReal *divV, double a)
 {	// Function to compute the non-linear terms on the RHS
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -367,7 +367,7 @@ void colloidAdvectionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoubleRea
 	if (((i + start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
 
-	divV[idx] = a*divV[idx] + a*( c_x[idx]*s_x[idx] + c_y[idx]*s_y[idx] + c_z[idx]*s_z[idx] ) 
+	divV[idx] = a*( divV[idx]*c[idx] + c_x[idx]*s_x[idx] + c_y[idx]*s_y[idx] + c_z[idx]*s_z[idx] ) 
 	            + u[idx]*c_x[idx] + v[idx]*c_y[idx] + w[idx]*c_z[idx];
 		
 	//divV[idx] = a*( c_x[idx]*s_x[idx] + c_y[idx]*s_y[idx] + c_z[idx]*s_z[idx] ) 
@@ -386,7 +386,7 @@ void colloidAdvection( gpudata gpu, fielddata vel, fielddata gradC, fielddata gr
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
-		colloidAdvectionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], gradC.u[n], gradC.v[n], gradC.w[n], gradS.u[n], gradS.v[n], gradS.w[n], divV[n], alpha);
+		colloidAdvectionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], vel.c[n], gradC.u[n], gradC.v[n], gradC.w[n], gradS.u[n], gradS.v[n], gradS.w[n], divV[n], alpha);
 	}
 
 	return;  
@@ -408,21 +408,24 @@ void scalarAdvection(fftdata fft, gpudata gpu, griddata grid, fielddata vel, fie
 	// ( u \dot grad ) z = u * dZ/dx + v * dZ/dy + w * dZ/dz
 	//===============================================================
 
-  gradient(gpu, grid, vel.sh, rhs);  // Calculate gradient of passive scalar
+  gradient(gpu, grid, vel.sh, rhs);  // Calculate gradient of passive scalar, store result in rhs.u,v,w
   // Calculate divergence of gradient of passive scalar (used in colloid eqn)
-  divergence(gpu, grid, rhs, rhs.ch);    // Calculate divergence of rhs, stores result in final array
+  divergence(gpu, grid, rhs, rhs.ch);    // Calculate divergence of rhs, stores result in rhs.ch
   
 	inverseTransform(fft, gpu, rhs.uh);
 	inverseTransform(fft, gpu, rhs.vh);
 	inverseTransform(fft, gpu, rhs.wh);
 
-	dotProduct(gpu, vel, rhs, rhs.s); // Calculates dot product between u,v,w components of vel, rhs; places result in final argument
+	dotProduct(gpu, vel, rhs, rhs.s); // Calculates dot product between u,v,w components of vel, rhs; places result in rhs.s
 
 	// rhs.s now holds the advective term of the scalar equation in physical domain. 
 	
 	//====== Colloid Transport Equation ======
+	// 
 	//===============================================================
-	// ( (u + u_dp) \dot grad ) c = u*dc/dx + v*dc/dy + w*dc/dz + alpha*grad(Z).*grad(c) + alpha*div(grad(c))
+	// div( (u + u_dp)*c ) = u.*grad(c) + u_dp.*grad(c) + div(u_dp)*c + ( div(u)*c == 0 ) 
+	// Drift velocity defined as: u_dp = alpha*grad(Z)
+	// --> div( (u + u_dp)*c ) = u.*grad(c) + alpha*grad(Z).*grad(c) + alpha*div(grad(Z))*c
 	//===============================================================
 
   gradient(gpu, grid, vel.ch, temp);  // Calculate gradient of colloid
@@ -433,10 +436,10 @@ void scalarAdvection(fftdata fft, gpudata gpu, griddata grid, fielddata vel, fie
 	inverseTransform(fft, gpu, temp.wh);
   inverseTransform(fft, gpu, rhs.ch);
   
-  // grad(S) stored in rhs.u,v,w; grad(C) stored in temp; div(u_dp) stored in rhs.c ; velocity stored in vel
+  // grad(Z) stored in rhs.u,v,w; grad(C) stored in temp; div(u_dp) stored in rhs.c ; velocity, scalars stored in vel
   colloidAdvection(gpu, vel, rhs, temp, rhs.c);
   
-  //rhs.ch now stores advection terms for colloid equation in physical domain
+  //rhs.c now stores advection terms for colloid equation in physical domain
   
 	return;
 }
@@ -678,6 +681,9 @@ void scalarFilter(gpudata gpu, cufftDoubleReal **f)
 
 void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fielddata vel, fielddata rhs, fielddata rhs_old, fielddata temp)
 {	// Pseudo spectral Navier-Stokes solver with conserved, passive scalar field
+
+	// Dealias primitive variables
+	deAlias(gpu, grid, vel);
 
 	// Inverse transform the velocity to physical space to for advective terms
 	inverseTransform(fft, gpu, vel.uh);
