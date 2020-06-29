@@ -150,6 +150,7 @@ int main (void)
 	forwardTransform(fft, gpu, vel.v);
 	forwardTransform(fft, gpu, vel.w);
 	forwardTransform(fft, gpu, vel.s);
+	forwardTransform(fft, gpu, vel.c);
 
 	// Dealias the solution by truncating RHS
 	deAlias(gpu, grid, vel);

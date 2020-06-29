@@ -6,10 +6,8 @@ void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fieldda
 
 void deAlias(gpudata gpu, griddata grid, fielddata vel);
 
-void takeDerivative(int dir, gpudata gpu, double **waveNum, cufftDoubleComplex **f, cufftDoubleComplex **fIk);
+void takeDerivative(int dir, gpudata gpu, griddata grid, cufftDoubleComplex **f, cufftDoubleComplex **fIk);
 
 void vorticity(gpudata gpu, griddata grid, fielddata vel, fielddata rhs);
-
-void gradient(gpudata gpu, griddata grid, cufftDoubleComplex **f, fielddata grad);
 
 #endif

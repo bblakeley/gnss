@@ -86,7 +86,7 @@ void writeYprofs(const int c, const char* name, double *data)
   char title [256];
 	FILE *out;
 	char folder [256];
-	
+
 	snprintf(folder, sizeof(folder), sim_name);
 	snprintf(title, sizeof(title), "%s%sYprofs/%s.%i", rootdir, folder, name, c);
 	printf("Writing data to %s \n", title);
@@ -112,11 +112,11 @@ void saveYprofs(const int c, profile data)
       mkdir(title, 0700);
     }
   }
-
   writeYprofs(c, "u_mean", data.u[0]);
   writeYprofs(c, "v_mean", data.v[0]);
   writeYprofs(c, "w_mean", data.w[0]);
   writeYprofs(c, "s_mean", data.s[0]);
+  writeYprofs(c, "c_mean", data.c[0]);
   
   return;
 }
@@ -282,12 +282,14 @@ void save2Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 		  checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		  checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		  checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 	  }
     
     writexyfields( gpu, c, 'u', h_vel.u, NZ/2);
     writexyfields( gpu, c, 'v', h_vel.v, NZ/2);
     writexyfields( gpu, c, 'w', h_vel.w, NZ/2);
     writexyfields( gpu, c, 'z', h_vel.s, NZ/2);
+    writexyfields( gpu, c, 'c', h_vel.c, NZ/2);
     
   }
   else{
@@ -296,6 +298,7 @@ void save2Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 		inverseTransform(fft, gpu, vel.vh);
 		inverseTransform(fft, gpu, vel.wh);
 		inverseTransform(fft, gpu, vel.sh);
+		inverseTransform(fft, gpu, vel.ch);
 
 		// Copy data to host   
 		for(n=0; n<gpu.nGPUs; ++n){
@@ -304,6 +307,7 @@ void save2Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		}
 
 		// Write data to file
@@ -311,12 +315,14 @@ void save2Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 		writexyfields(gpu, c, 'v', h_vel.v, NZ/2);
 		writexyfields(gpu, c, 'w', h_vel.w, NZ/2);
 		writexyfields(gpu, c, 'z', h_vel.s, NZ/2);
+		writexyfields(gpu, c, 'c', h_vel.c, NZ/2);
 
 		// Transform fields back to fourier space for timestepping
 		forwardTransform(fft, gpu, vel.u);
 		forwardTransform(fft, gpu, vel.v);
 		forwardTransform(fft, gpu, vel.w);
 		forwardTransform(fft, gpu, vel.s);
+		forwardTransform(fft, gpu, vel.c);
 	}
 
 	return;
@@ -374,13 +380,15 @@ void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		}
 
 		// Write data to file
 	  write3Dfields_mgpu(gpu, 0, 'u', h_vel.u);
 		write3Dfields_mgpu(gpu, 0, 'v', h_vel.v);
 		write3Dfields_mgpu(gpu, 0, 'w', h_vel.w);
-		write3Dfields_mgpu(gpu, 0, 'z', h_vel.s);		
+		write3Dfields_mgpu(gpu, 0, 'z', h_vel.s);	
+		write3Dfields_mgpu(gpu, 0, 'c', h_vel.c);		
 
 		return;
 	}
@@ -391,6 +399,7 @@ void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 		inverseTransform(fft, gpu, vel.vh);
 		inverseTransform(fft, gpu, vel.wh);
 		inverseTransform(fft, gpu, vel.sh);
+		inverseTransform(fft, gpu, vel.ch);
 
 		// Copy data to host   
 		printf( "Timestep %i Complete. . .\n", c );
@@ -401,6 +410,7 @@ void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		}
 
 		// Write data to file
@@ -408,12 +418,14 @@ void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 		write3Dfields_mgpu(gpu, c, 'v', h_vel.v);
 		write3Dfields_mgpu(gpu, c, 'w', h_vel.w);
 		write3Dfields_mgpu(gpu, c, 'z', h_vel.s);
+		write3Dfields_mgpu(gpu, c, 'c', h_vel.c);
 
 		// Transform fields back to fourier space for timestepping
 		forwardTransform(fft, gpu, vel.u);
 		forwardTransform(fft, gpu, vel.v);
 		forwardTransform(fft, gpu, vel.w);
 		forwardTransform(fft, gpu, vel.s);
+		forwardTransform(fft, gpu, vel.c);
 
 	return;
 	}

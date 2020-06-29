@@ -37,7 +37,7 @@
 #define RAD 1
 
 /*
-// Temporal Jet, following daSilva 2008, PoF
+// 512^3 Temporal Jet, following daSilva 2008, PoF
 #define NX 512
 #define NY 512
 #define NZ 512
@@ -60,7 +60,7 @@
 #define Sc 0.7
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 #define k_fil 96.0								// High-pass filter cutoff for initial condition
-#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/tempjetinv2_8H_0R4_Re3200_filter96/"
+#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/temporal-jet/inv2_8H_0R4_Re3200_filter96/"
 #define DataLocation "/home/bblakeley/Documents/Research/Flamelet_Data/R4/%s.0"
 #define RAD 1
 */

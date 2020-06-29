@@ -1924,7 +1924,7 @@ void calcSpectra_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fiel
 //		cudaError_t err;
 
 //		// Call kernels to calculate spherical energy spectra
-//		calcEnergySpectraKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].energy_spect);
+//		calcEnergySpectraKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].energy_spect);
 //		err = cudaGetLastError();
 //		if (err != cudaSuccess) 
 //	    printf("Error: %s\n", cudaGetErrorString(err));
@@ -2075,8 +2075,8 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 	calcScalarDissipationRate(gpu, grid, vel, stats);
 
 	// Calculate energy and scalar spectra
-	// calcSpectra_mgpu(c, gpu, fft, wave, vel, stats);
-
+	// calcSpectra_mgpu(c, gpu, fft, grid, vel, stats);
+	
 	// Form the vorticity in Fourier space
 	vorticity(gpu, grid, vel, rhs);
 
@@ -2116,12 +2116,14 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 	inverseTransform(fft, gpu, vel.vh);
 	inverseTransform(fft, gpu, vel.wh);
 	inverseTransform(fft, gpu, vel.sh);
+	inverseTransform(fft, gpu, vel.ch);
   
   // Calculate mean profiles
   calcYprof(gpu, vel.u, Yprof.u);
   calcYprof(gpu, vel.v, Yprof.v);
   calcYprof(gpu, vel.w, Yprof.w);
   calcYprof(gpu, vel.s, Yprof.s);
+  calcYprof(gpu, vel.c, Yprof.c);
   
   synchronizeGPUs(nGPUs);			// Synchronize GPUs
 	
@@ -2135,6 +2137,7 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
   forwardTransform(fft, gpu, vel.v);
   forwardTransform(fft, gpu, vel.w);	
   forwardTransform(fft, gpu, vel.s);
+  forwardTransform(fft, gpu, vel.c);
   
 //=============================================================================================
 // Collecting results from all GPUs

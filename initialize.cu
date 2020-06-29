@@ -200,6 +200,7 @@ void initializeScalar(gpudata gpu, fielddata vel)
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
 		initializeScalarKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.s[n]);
+		initializeScalarKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.c[n]);
 		printf("Scalar field initialized on GPU #%d...\n",n);
 	}
 
