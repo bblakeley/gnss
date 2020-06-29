@@ -79,12 +79,12 @@ void printIterTime(int c, double steptime)
 // Write to file
 //============================================================================================
 
-void writeYprofiles(const int c, const char* name, double *data)
+void writeYprofs(const int c, const char* name, double *data)
 {
   char title[0x100];
 	FILE *out;
 	
-	snprintf(title, sizeof(title), "%sYprofiles/%s.%i", rootdir, name, c);
+	snprintf(title, sizeof(title), "%sYprofs/%s.%i", rootdir, name, c);
 	printf("Writing data to %s \n", title);
 	out = fopen(title, "wb");
 	
@@ -95,22 +95,23 @@ void writeYprofiles(const int c, const char* name, double *data)
   return;
 }
 
-void saveYprofiles(const int c, profile data)
+void saveYprofs(const int c, profile data)
 { // Save mean profiles to file
   struct stat st = {0};
   char title[0x100];
   
 	if(c==0){  // Create directory for statistics if one doesn't already exist
-	  snprintf(title, sizeof(title), "%s%s", rootdir, "Yprofiles/");
+	  snprintf(title, sizeof(title), "%s%s", rootdir, "Yprofs/");
     if (stat(title, &st) == -1) {  
       mkdir(title, 0700);
     }
   }
   
-  writeYprofiles(c, "u_mean", data.u[0]);
-  writeYprofiles(c, "v_mean", data.v[0]);
-  writeYprofiles(c, "w_mean", data.w[0]);
-  writeYprofiles(c, "s_mean", data.s[0]);
+  writeYprofs(c, "u_mean", data.u[0]);
+  writeYprofs(c, "v_mean", data.v[0]);
+  writeYprofs(c, "w_mean", data.w[0]);
+  writeYprofs(c, "s_mean", data.s[0]);
+  writeYprofs(c, "c_mean", data.c[0]);
   
   return;
 }
@@ -168,7 +169,7 @@ void saveStatsData(const int c, statistics stats)
 	return;
 }
 
-void writexyfields( gpuinfo gpu, const int iter, const char var, double **in, const int zplane ) 
+void writexyfields( gpudata gpu, const int iter, const char var, double **in, const int zplane ) 
 {
 	int i, j, n, idx;
 	char title[0x100];
@@ -191,7 +192,7 @@ void writexyfields( gpuinfo gpu, const int iter, const char var, double **in, co
 	return;
 }
 
-void writexzfields( gpuinfo gpu, const int iter, const char var, double **in, const int yplane ) 
+void writexzfields( gpudata gpu, const int iter, const char var, double **in, const int yplane ) 
 {
 	int i, k, n, idx;
 	char title[0x100];
@@ -214,7 +215,7 @@ void writexzfields( gpuinfo gpu, const int iter, const char var, double **in, co
 	return;
 }
 
-void writeyzfields( gpuinfo gpu, const int iter, const char var, double **in, const int xplane ) 
+void writeyzfields( gpudata gpu, const int iter, const char var, double **in, const int xplane ) 
 {
 	int j, k, n, idx;
 	char title[0x100];
@@ -237,7 +238,7 @@ void writeyzfields( gpuinfo gpu, const int iter, const char var, double **in, co
 	return;
 }
 
-void save2Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel)
+void save2Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata vel)
 {
 	int n;
 	char title[0x100];
@@ -253,15 +254,17 @@ void save2Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 	  for(n=0; n<gpu.nGPUs; ++n){
 		  cudaSetDevice(n);
 		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.u[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		  checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		  checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 	  }
     
     writexyfields( gpu, c, 'u', h_vel.u, NZ/2);
     writexyfields( gpu, c, 'v', h_vel.v, NZ/2);
     writexyfields( gpu, c, 'w', h_vel.w, NZ/2);
     writexyfields( gpu, c, 'z', h_vel.s, NZ/2);
+    writexyfields( gpu, c, 'c', h_vel.c, NZ/2);
     
   }
   else{
@@ -270,6 +273,7 @@ void save2Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 		inverseTransform(fft, gpu, vel.vh);
 		inverseTransform(fft, gpu, vel.wh);
 		inverseTransform(fft, gpu, vel.sh);
+		inverseTransform(fft, gpu, vel.ch);
 
 		// Copy data to host   
 		for(n=0; n<gpu.nGPUs; ++n){
@@ -278,6 +282,7 @@ void save2Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		}
 
 		// Write data to file
@@ -285,18 +290,20 @@ void save2Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 		writexyfields(gpu, c, 'v', h_vel.v, NZ/2);
 		writexyfields(gpu, c, 'w', h_vel.w, NZ/2);
 		writexyfields(gpu, c, 'z', h_vel.s, NZ/2);
+		writexyfields(gpu, c, 'c', h_vel.c, NZ/2);
 
 		// Transform fields back to fourier space for timestepping
 		forwardTransform(fft, gpu, vel.u);
 		forwardTransform(fft, gpu, vel.v);
 		forwardTransform(fft, gpu, vel.w);
 		forwardTransform(fft, gpu, vel.s);
+		forwardTransform(fft, gpu, vel.c);
 	}
 
 	return;
 }
 
-void write3Dfields_mgpu(gpuinfo gpu, const int iter, const char var, double **in ) 
+void write3Dfields_mgpu(gpudata gpu, const int iter, const char var, double **in ) 
 {
 	int i, j, k, n, idx;
 	char title[0x100];
@@ -325,7 +332,7 @@ void write3Dfields_mgpu(gpuinfo gpu, const int iter, const char var, double **in
 	return;
 }
 
-void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel){
+void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata vel){
 	int n;
 	struct stat st = {0};
 
@@ -342,13 +349,15 @@ void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		}
 
 		// Write data to file
 	  write3Dfields_mgpu(gpu, 0, 'u', h_vel.u);
 		write3Dfields_mgpu(gpu, 0, 'v', h_vel.v);
 		write3Dfields_mgpu(gpu, 0, 'w', h_vel.w);
-		write3Dfields_mgpu(gpu, 0, 'z', h_vel.s);		
+		write3Dfields_mgpu(gpu, 0, 'z', h_vel.s);	
+		write3Dfields_mgpu(gpu, 0, 'c', h_vel.c);		
 
 		return;
 	}
@@ -359,6 +368,7 @@ void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 		inverseTransform(fft, gpu, vel.vh);
 		inverseTransform(fft, gpu, vel.wh);
 		inverseTransform(fft, gpu, vel.sh);
+		inverseTransform(fft, gpu, vel.ch);
 
 		// Copy data to host   
 		printf( "Timestep %i Complete. . .\n", c );
@@ -369,6 +379,7 @@ void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 			checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], vel.v[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], vel.w[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+			checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		}
 
 		// Write data to file
@@ -376,12 +387,14 @@ void save3Dfields(int c, fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata ve
 		write3Dfields_mgpu(gpu, c, 'v', h_vel.v);
 		write3Dfields_mgpu(gpu, c, 'w', h_vel.w);
 		write3Dfields_mgpu(gpu, c, 'z', h_vel.s);
+		write3Dfields_mgpu(gpu, c, 'c', h_vel.c);
 
 		// Transform fields back to fourier space for timestepping
 		forwardTransform(fft, gpu, vel.u);
 		forwardTransform(fft, gpu, vel.v);
 		forwardTransform(fft, gpu, vel.w);
 		forwardTransform(fft, gpu, vel.s);
+		forwardTransform(fft, gpu, vel.c);
 
 	return;
 	}
@@ -416,7 +429,7 @@ double readDouble(FILE *f){
 	}
 }
 
-void loadData(gpuinfo gpu, const char *name, double **var)
+void loadData(gpudata gpu, const char *name, double **var)
 { // Function to read in velocity data into multiple GPUs
 
 	int i, j, k, n, idx, N;
@@ -449,7 +462,7 @@ void loadData(gpuinfo gpu, const char *name, double **var)
 	return;
 }
 
-void importVelocity(gpuinfo gpu, fielddata h_vel, fielddata vel)
+void importVelocity(gpudata gpu, fielddata h_vel, fielddata vel)
 {	// Import data from file
 	int n;
 
@@ -470,7 +483,7 @@ void importVelocity(gpuinfo gpu, fielddata h_vel, fielddata vel)
 	return;
 }
 
-void importScalar(gpuinfo gpu, fielddata h_vel, fielddata vel)
+void importScalar(gpudata gpu, fielddata h_vel, fielddata vel)
 {	// Import data from file
 	int n;
 
@@ -487,7 +500,7 @@ void importScalar(gpuinfo gpu, fielddata h_vel, fielddata vel)
 	return;
 }
 
-void importData(gpuinfo gpu, fielddata h_vel, fielddata vel) // Deprecated
+void importData(gpudata gpu, fielddata h_vel, fielddata vel) // Deprecated
 {	// Import data
 
 	importVelocity(gpu, h_vel, vel);

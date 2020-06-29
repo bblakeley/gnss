@@ -2,6 +2,6 @@
 #define STATS_H
 #include "struct_def.h"
 
-void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, fielddata rhs, statistics *stats, profile Yprofile);
+void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fielddata vel, fielddata rhs, statistics *stats, profile Yprof);
 
 #endif	

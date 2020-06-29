@@ -2,18 +2,18 @@
 #define INIT_H
 #include "struct_def.h"
 
-void initializeData(gpuinfo gpu, fftinfo fft, fielddata vel);
+void initializeData(gpudata gpu, fftdata fft, fielddata vel);
 
-void initializeVelocity(gpuinfo gpu, fielddata vel);
+void initializeVelocity(gpudata gpu, fielddata vel);
 
-void initializeScalar(gpuinfo gpu, fielddata vel);
+void initializeScalar(gpudata gpu, fielddata vel);
 
-void initializeWaveNumbers(gpuinfo gpu, double **waveNum);
+void initializeWaveNumbers(gpudata gpu, griddata grid);
 
-void initializeJet_Convolution(fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel, fielddata rhs);
+void initializeJet_Convolution(fftdata fft, gpudata gpu, fielddata h_vel, fielddata vel, fielddata rhs);
 
-void initializeJet_Superposition(fftinfo fft, gpuinfo gpu, double **wave, fielddata h_vel, fielddata vel, fielddata rhs);
+void initializeJet_Superposition(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs);
 
-void initializeTaylorGreen(gpuinfo gpu, fielddata vel);
+void initializeTaylorGreen(gpudata gpu, fielddata vel);
 
 #endif

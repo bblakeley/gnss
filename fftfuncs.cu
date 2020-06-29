@@ -57,7 +57,7 @@ void organizeData_2d(cufftDoubleComplex *in, cufftDoubleComplex *out, int N, int
 	return;
 }
 
-void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex **dst, cufftDoubleComplex **temp)
+void transpose_xy_mgpu(gpudata gpu, cufftDoubleComplex **src, cufftDoubleComplex **dst, cufftDoubleComplex **temp)
 {   // Transpose x and y directions (for a z-contiguous 1d array distributed across multiple GPUs)
 	// This function loops through GPUs to do the transpose. Requires extra conversion to calculate the local index at the source location.
 	// printf("Taking Transpose...\n");
@@ -89,7 +89,7 @@ void transpose_xy_mgpu(gpuinfo gpu, cufftDoubleComplex **src, cufftDoubleComplex
 // FFT functions
 //==============================================================================
 
-void plan2dFFT(gpuinfo gpu, fftinfo fft){
+void plan2dFFT(gpudata gpu, fftdata fft){
 // This function plans a 2-dimensional FFT to operate on the Z and Y directions (assumes Z-direction is contiguous in memory)
 	int result;
 
@@ -160,7 +160,7 @@ void plan2dFFT(gpuinfo gpu, fftinfo fft){
 	return;
 }
 
-void plan1dFFT(int nGPUs, fftinfo fft){
+void plan1dFFT(int nGPUs, fftdata fft){
 // This function plans a 1-dimensional FFT to operate on the X direction (for X-direction not contiguous in memory, offset by Z-dimension)
     int result;
 
@@ -224,7 +224,7 @@ void Execute1DFFT_Inverse(cufftHandle plan, int NY_per_GPU, cufftDoubleComplex *
 }
 
 
-void forwardTransform(fftinfo fft, gpuinfo gpu, cufftDoubleReal **f )
+void forwardTransform(fftdata fft, gpudata gpu, cufftDoubleReal **f )
 { // Transform from physical to wave domain
 
 	int RESULT, n;
@@ -258,7 +258,7 @@ void forwardTransform(fftinfo fft, gpuinfo gpu, cufftDoubleReal **f )
 	return;
 }
 
-void inverseTransform(fftinfo fft, gpuinfo gpu, cufftDoubleComplex **f)
+void inverseTransform(fftdata fft, gpudata gpu, cufftDoubleComplex **f)
 { // Transform variables from wavespace to the physical domain 
 	int RESULT, n;
 
