@@ -130,10 +130,14 @@ void initializeVelocityKernel_mgpu(int start_x, cufftDoubleReal *f1, cufftDouble
 	f3[idx] = 0.02*f3[idx];
 */
 	// Initialize smooth jet velocity profile
-	f1[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
-	f2[idx] = 0.0;
-	f3[idx] = 0.0;
+//	f1[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
+//	f2[idx] = 0.0;
+//	f3[idx] = 0.0;
 
+	// Initialize smooth jet velocity profile /////////////////////////
+	f1[idx] = 0.0;
+	f2[idx] = 0.01*sin(4.0*y);
+	f3[idx] = 0.0;
 
 	return;
 }
@@ -170,7 +174,7 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 	// double z = -(double)LZ/2 + k*(double)NZ/NZ;
 
 	// Initialize scalar field
-	Z[idx] = 0.5 - 0.5*tanh( H/(4.0*theta_s)*( 2.0*fabs(y)/H - 1.0 ));
+	Z[idx] = 1.0; //0.5 - 0.5*tanh( H/(4.0*theta_s)*( 2.0*fabs(y)/H - 1.0 )); ///////////////
 /*
 	// For mixing layer used in Blakeley et al., 2019 JoT
   // Create physical vectors in temporary memory
@@ -229,14 +233,14 @@ void initializeJet_Superposition(fftdata fft, gpudata gpu, griddata grid, fieldd
 	int n;
 
 	// Import isotropic velocity field
-	importData(gpu, h_vel, rhs);
+	// importData(gpu, h_vel, rhs);///////////////////////
 
 	// High-pass filter to remove lowest wavenumbers
-	hpFilter(gpu, fft, grid, rhs);
+	// hpFilter(gpu, fft, grid, rhs);/////////////////
 
 	// Initialize smooth jet velocity field (hyperbolic tangent profile from da Silva and Pereira)
 	initializeVelocity(gpu, vel);
-
+/*
 	// Superimpose isotropic noise on top of jet velocity initialization
 	for (n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
@@ -247,7 +251,7 @@ void initializeJet_Superposition(fftdata fft, gpudata gpu, griddata grid, fieldd
 		velocitySuperpositionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n], 0.02);
 		printf("Superimposing Jet velocity profile with isotropic noise...\n");
 	}	
-
+*/ /////////////////////////////
 	initializeScalar(gpu, vel);
 
 	synchronizeGPUs(gpu.nGPUs);
