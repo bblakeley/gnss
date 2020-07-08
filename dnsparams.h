@@ -21,18 +21,18 @@
 #define n_vis 200	// Number of timesteps to take between saving 2D slices of field data
 #define n_stats 200		// Number of timesteps to take between calculating stats data
 #define dt .008 	// Timestep
-#define nt 15000		// Total number of timesteps to take in the simulation
+#define nt 10000		// Total number of timesteps to take in the simulation
 #define H (2.0*PI/6.0)
 #define theta (H/35.0)
 #define theta_s (H/35.0)
-#define nu (1.0/1000.0) ////////////////////////(H/2200.0)
+#define nu (1.0/1500.0) ////////////////////////(H/2200.0)
 #define Re (1.0/nu)
 #define Sc 1.0 //////////////////
 #define alpha 1.0 ////////////////////
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 //#define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation
 #define k_fil 24.0								// High-pass filter cutoff for initial condition
-#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/diffusiophoresis/exact_D1000/" //////////
+#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/diffusiophoresis/exact_D1500_k64/" //////////
 //temporal-jet/inv02_6H_0R2_Re2200_f24_a0033_thetas35/"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
 #define RAD 1

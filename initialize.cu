@@ -136,7 +136,7 @@ void initializeVelocityKernel_mgpu(int start_x, cufftDoubleReal *f1, cufftDouble
 
 	// Initialize smooth jet velocity profile /////////////////////////
 	f1[idx] = 0.0;
-	f2[idx] = 0.01*sin(4.0*y);
+	f2[idx] = 0.01*sin(64.0*y);
 	f3[idx] = 0.0;
 
 	return;
