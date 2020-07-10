@@ -372,7 +372,7 @@ void dotProduct( gpudata gpu, fielddata a, fielddata b, cufftDoubleReal **result
 }
 
 __global__
-void colloidAdvectionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoubleReal *v, cufftDoubleReal *w, cufftDoubleReal *c, cufftDoubleReal *c_x, cufftDoubleReal *c_y, cufftDoubleReal *c_z, cufftDoubleReal *s_x, cufftDoubleReal *s_y, cufftDoubleReal *s_z, cufftDoubleReal *divV, double a)
+void colloidAdvectionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoubleReal *v, cufftDoubleReal *w, cufftDoubleReal *c, cufftDoubleReal *c_x, cufftDoubleReal *c_y, cufftDoubleReal *c_z, cufftDoubleReal *udp, cufftDoubleReal *vdp, cufftDoubleReal *wdp, cufftDoubleReal *divVdp, double a)
 {	// Function to compute the non-linear terms on the RHS
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -381,15 +381,13 @@ void colloidAdvectionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoubleRea
 	if (((i + start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
 
-	divV[idx] = a*( divV[idx]*c[idx] + c_x[idx]*s_x[idx] + c_y[idx]*s_y[idx] + c_z[idx]*s_z[idx] ) 
+	divVdp[idx] = a*( divVdp[idx]*c[idx] + c_x[idx]*udp[idx] + c_y[idx]*vdp[idx] + c_z[idx]*wdp[idx] ) 
 	            + u[idx]*c_x[idx] + v[idx]*c_y[idx] + w[idx]*c_z[idx];
-		
-	//divV[idx] = a*( c_x[idx]*s_x[idx] + c_y[idx]*s_y[idx] + c_z[idx]*s_z[idx] ) 
-	//            + u[idx]*c_x[idx] + v[idx]*c_y[idx] + w[idx]*c_z[idx]; // removing div(u_dp) term
+	            
 	return;
 }
 
-void colloidAdvection( gpudata gpu, fielddata vel, fielddata gradC, fielddata gradS, cufftDoubleReal **divV)
+void colloidAdvection( gpudata gpu, fielddata vel, fielddata gradC, fielddata Vdp, cufftDoubleReal **divVdp)
 {
 	// Loop through GPUs and calculate advection terms in colloid transport equation
 	// Note: Data assumed to be transposed during 3D FFt process; k + NZ*i + NZ*NX*j
@@ -400,7 +398,7 @@ void colloidAdvection( gpudata gpu, fielddata vel, fielddata gradC, fielddata gr
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
-		colloidAdvectionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], vel.c[n], gradC.u[n], gradC.v[n], gradC.w[n], gradS.u[n], gradS.v[n], gradS.w[n], divV[n], alpha);
+		colloidAdvectionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], vel.c[n], gradC.u[n], gradC.v[n], gradC.w[n], Vdp.u[n], Vdp.v[n], Vdp.w[n], divVdp[n], alpha);
 	}
 
 	return;  
@@ -426,6 +424,7 @@ void scalarAdvection(fftdata fft, gpudata gpu, griddata grid, fielddata vel, fie
   // Calculate divergence of gradient of passive scalar (used in colloid eqn)
   divergence(gpu, grid, rhs, rhs.ch);    // Calculate divergence of rhs, stores result in rhs.ch
   
+  // Transform derivatives from Fourier space to physical space
 	inverseTransform(fft, gpu, rhs.uh);
 	inverseTransform(fft, gpu, rhs.vh);
 	inverseTransform(fft, gpu, rhs.wh);
@@ -449,9 +448,10 @@ void scalarAdvection(fftdata fft, gpudata gpu, griddata grid, fielddata vel, fie
 	inverseTransform(fft, gpu, temp.vh);
 	inverseTransform(fft, gpu, temp.wh);
   inverseTransform(fft, gpu, rhs.ch);
+  inverseTransform(fft, gpu, vel.ch);
   
-  // grad(Z) stored in rhs.u,v,w; grad(C) stored in temp; div(u_dp) stored in rhs.c ; velocity, scalars stored in vel
-  colloidAdvection(gpu, vel, rhs, temp, rhs.c);
+  // grad(Z) aka Vdp stored in rhs.u,v,w; grad(C) stored in temp; div(u_dp) stored in rhs.c ; velocity, scalars stored in vel
+  colloidAdvection(gpu, vel, temp, rhs, rhs.c);
   
   //rhs.c now stores advection terms for colloid equation in physical domain
   
@@ -711,11 +711,16 @@ void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fieldda
 	// Form advective term in scalar equations
 	scalarAdvection(fft, gpu, grid, vel, rhs, temp);
 	
-	// Transform velocity back to fourier space
+	// Transform primitive variables back to fourier space
 	forwardTransform(fft, gpu, vel.u);
 	forwardTransform(fft, gpu, vel.v);
 	forwardTransform(fft, gpu, vel.w);
+	forwardTransform(fft, gpu, vel.c);
 	
+	// Transform the non-linear term in rhs from physical space to Fourier space for timestepping
+	forwardTransform(fft, gpu, rhs.s);
+	forwardTransform(fft, gpu, rhs.c);
+		
 	// Form the vorticity in Fourier space
 	vorticity(gpu, grid, vel, rhs);
 
@@ -738,10 +743,6 @@ void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fieldda
 	forwardTransform(fft, gpu, rhs.u);
 	forwardTransform(fft, gpu, rhs.v);
 	forwardTransform(fft, gpu, rhs.w);
-	
-	// Transform the non-linear term in rhs from physical space to Fourier space for timestepping
-	forwardTransform(fft, gpu, rhs.s);
-	forwardTransform(fft, gpu, rhs.c);
 	
 	// Transform velocity back to fourier space for timestepping
 	forwardTransform(fft, gpu, vel.u);
