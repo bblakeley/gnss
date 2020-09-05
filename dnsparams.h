@@ -24,9 +24,12 @@
 #define nt 18000		// Total number of timesteps to take in the simulation
 #define H (LY/6.0)
 #define theta (H/35.0)
+#define theta_s (H/35.0)
+#define theta_c (H/35.0)
 #define Re 3200.0
 #define nu (H/Re)
-#define Sc 0.7
+#define Sc 0.7      // Schmidt number of salt
+#define Sc_c 1.4    // Schmidt number of colloid
 // #define alias_filter (2.0/3.0)			// De-alias using the 2/3 truncation rule
 #define alias_filter (15.0/32.0)*2.0			// De-alias using the 15/32 rule (Weirong's thesis)
 #define k_fil 24.0								// High-pass filter cutoff for initial condition
