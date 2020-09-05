@@ -28,12 +28,13 @@
 #define theta_c (H/35.0)
 #define nu (H/2200.0)
 #define Re (1.0/nu)
-#define Sc 0.7
-#define alpha 0.002
+#define Sc 0.7      // Schmidt number of salt
+#define Sc_c 1.4    // Schmidt number of colloid
+#define alpha 0.0033
 //#define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation
 #define k_fil 24.0								// High-pass filter cutoff for initial condition
-#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/diffusiophoresis/inv02_6H_0R2_Re2200_f24_a002_thetac35/"
+#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/diffusiophoresis/inv02_6H_0R2_Re2200_f24_a0033_thetac35_Scc14/"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
 #define RAD 1
 

@@ -584,7 +584,7 @@ void timestep(const int flag, gpudata gpu, griddata grid, fielddata vel, fieldda
 			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.vh[n], rhs.vh[n]);
 			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.wh[n], rhs.wh[n]);
 			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.sh[n], rhs.sh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.ch[n], rhs.ch[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc_c, gpu.start_y[n], grid.kx[n], vel.ch[n], rhs.ch[n]);
 		}
 		else {
 			// printf("Using A-B Method\n");
@@ -592,7 +592,7 @@ void timestep(const int flag, gpudata gpu, griddata grid, fielddata vel, fieldda
 			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.vh[n], rhs.vh[n], rhs_old.vh[n]);
 			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.wh[n], rhs.wh[n], rhs_old.wh[n]);
 			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.sh[n], rhs.sh[n], rhs_old.sh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.ch[n], rhs.ch[n], rhs_old.ch[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc_c, gpu.start_y[n], grid.kx[n], vel.ch[n], rhs.ch[n], rhs_old.ch[n]);
 		}
 	}
 
