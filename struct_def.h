@@ -1,14 +1,14 @@
 #ifndef STRUCT_DEF
 #define STRUCT_DEF
 
-typedef struct gpuinfo{
+typedef struct gpudata{
 	int *gpunum;				// Current GPU number
 	int *ny;						// Number of grid points in the Y direction for the nth GPU
 	int *nx; 					  // Number of grid points in the X direction for GPU n
 	int *start_y;			  // Starting index of data in the y-direction for this gpu
 	int *start_x;			  // Starting index of data in x-direction for this gpu
 	int nGPUs;				  // Number of GPUs on this node 
-} gpuinfo;
+} gpudata;
 
 typedef struct statistics{
 	double Vrms;							// RMS velocity
@@ -28,16 +28,18 @@ typedef struct statistics{
 	double tmp;              // Temporary array used to store intermediate values during multi-gpu computations
 }statistics;
 
-typedef struct fftinfo{
+typedef struct fftdata{
 	cufftHandle *p1d;									  // cuFFT Plan info for 1D Transform
 	cufftHandle *p2d;									  // cuFFT Plan info for 2D Transform
 	cufftHandle *invp2d;								// cuFFT Plan info for inverse 2D Transform
+	cufftHandle *p3d;
+	cufftHandle *invp3d;
 	size_t *wsize_f;										// Size of workspace needed for forward transform
 	size_t *wsize_i;										// Size of workspace needed for inverse transform
 	cufftDoubleComplex **wspace;				// Pointer to cuFFT workspace to perform FFTs
 	cufftDoubleComplex **temp;					// Pointer to temporary array used in transpose
 	cufftDoubleComplex **temp_reorder;	// Pointer to temporary array used in transpose
-}fftinfo;
+}fftdata;
 
 typedef struct fielddata{
 	cufftDoubleReal **u;					// u component of velocity in physical space
@@ -52,7 +54,7 @@ typedef struct fielddata{
 	cufftDoubleReal **right;   // Halo data on right boundary 
 }fielddata;
 
-typedef struct gridinfo{
+typedef struct griddata{
 	double nx;					// Number of grid points in x-direction
 	double ny;					// Number of grid points in y-direction
 	double nz;					// Number of grid points in z-direction
@@ -62,13 +64,13 @@ typedef struct gridinfo{
 	double dx;					// Grid spacing in x-direction
 	double dy;					// Grid spacing in y-direction
 	double dz;					// Grid spacing in z-direction
-	double *x;					// Vector of grid points in x-direction
-	double *y;					// Vector of grid points in y-direction
-	double *z;					// Vector of grid points in z-direction
-	double *kx;					// Vector of wave numbers in x-direction
-	double *ky;					// Vector of wave numbers in y-direction
-	double *kz;					// Vector of wave numbers in z-direction
-}gridinfo;
+	double **x;					// Vector of grid points in x-direction
+	double **y;					// Vector of grid points in y-direction
+	double **z;					// Vector of grid points in z-direction
+	double **kx;					// Vector of wave numbers in x-direction
+	double **ky;					// Vector of wave numbers in y-direction
+	double **kz;					// Vector of wave numbers in z-direction
+}griddata;
 
 typedef struct profile{
   double n;          // Length of profile vector

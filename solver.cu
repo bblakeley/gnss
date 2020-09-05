@@ -34,7 +34,7 @@ void deAliasKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *fhat){
 	return;
 }
 
-void deAlias(gpuinfo gpu, double **k, fielddata vel)
+void deAlias(gpudata gpu, griddata grid, fielddata vel)
 {	// Truncate data for de-aliasing
 
 	int n;
@@ -46,10 +46,10 @@ void deAlias(gpuinfo gpu, double **k, fielddata vel)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call the kernel
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], k[n], vel.uh[n]);
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], k[n], vel.vh[n]);
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], k[n], vel.wh[n]);
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], k[n], vel.sh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.vh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.wh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.sh[n]);
 	}
 	
 	return;
@@ -100,7 +100,7 @@ void calcOmega3Kernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *u1h
 	return;
 }
 
-void calcVorticity(gpuinfo gpu, double **waveNum, fielddata vel, fielddata rhs){
+void vorticity(gpudata gpu, griddata grid, fielddata vel, fielddata rhs){
 	// Function to calculate the vorticity in Fourier Space and transform to physical space
 	
 	int n;
@@ -112,9 +112,9 @@ void calcVorticity(gpuinfo gpu, double **waveNum, fielddata vel, fielddata rhs){
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call kernels to calculate vorticity
-		calcOmega1Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], waveNum[n], vel.vh[n], vel.wh[n], rhs.uh[n]);
-		calcOmega2Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], waveNum[n], vel.uh[n], vel.wh[n], rhs.vh[n]);
-		calcOmega3Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], waveNum[n], vel.uh[n], vel.vh[n], rhs.wh[n]);
+		calcOmega1Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], vel.vh[n], vel.wh[n], rhs.uh[n]);
+		calcOmega2Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], vel.uh[n], vel.wh[n], rhs.vh[n]);
+		calcOmega3Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], vel.uh[n], vel.vh[n], rhs.wh[n]);
 		// Kernel calls include scaling for post-FFT
 	}
 
@@ -124,7 +124,7 @@ void calcVorticity(gpuinfo gpu, double **waveNum, fielddata vel, fielddata rhs){
 }
 
 __global__
-void CrossProductKernel_mgpu(int start_x, cufftDoubleReal *u1, cufftDoubleReal *u2, cufftDoubleReal *u3, cufftDoubleReal *omega1, cufftDoubleReal *omega2, cufftDoubleReal *omega3){
+void crossProductKernel_mgpu(int start_x, cufftDoubleReal *u1, cufftDoubleReal *u2, cufftDoubleReal *u3, cufftDoubleReal *omega1, cufftDoubleReal *omega2, cufftDoubleReal *omega3){
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -149,7 +149,7 @@ void CrossProductKernel_mgpu(int start_x, cufftDoubleReal *u1, cufftDoubleReal *
 	return;
 }
 
-void formCrossProduct(gpuinfo gpu, fielddata vel, fielddata rhs){
+void crossProduct(gpudata gpu, fielddata vel, fielddata rhs){
 // Function to evaluate omega x u in physical space and then transform the result to Fourier Space
 
 	int n;
@@ -160,7 +160,7 @@ void formCrossProduct(gpuinfo gpu, fielddata vel, fielddata rhs){
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
 		// Call kernel to calculate vorticity
-		CrossProductKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n]);
+		crossProductKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n]);
 
 		cudaDeviceSynchronize();
 	}
@@ -180,24 +180,24 @@ void multIkKernel_mgpu(const int dir, int start_y, double *waveNum, cufftDoubleC
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
 	if(dir == 1){
-		fIk[idx].x = -waveNum[i]*f[idx].y;     // Scaling results for when the inverse FFT is taken
+		fIk[idx].x = -waveNum[i]*f[idx].y;
 		fIk[idx].y = waveNum[i]*f[idx].x;
 	}
 
 	if(dir == 2){
-		fIk[idx].x = -waveNum[j+start_y]*f[idx].y;     // Scaling results for when the inverse FFT is taken
+		fIk[idx].x = -waveNum[j+start_y]*f[idx].y;
 		fIk[idx].y = waveNum[j+start_y]*f[idx].x;
 	}
 
 	if(dir == 3){
-		fIk[idx].x = -waveNum[k]*f[idx].y;     // Scaling results for when the inverse FFT is taken
+		fIk[idx].x = -waveNum[k]*f[idx].y;
 		fIk[idx].y = waveNum[k]*f[idx].x;
 	}
 
 	return;
 }
 
-void takeDerivative(int dir, gpuinfo gpu, double **waveNum, cufftDoubleComplex **f, cufftDoubleComplex **fIk)
+void takeDerivative(int dir, gpudata gpu, griddata grid, cufftDoubleComplex **f, cufftDoubleComplex **fIk)
 {
 	// Loop through GPUs and multiply by iK
 	// Note: Data assumed to be transposed during 3D FFt process; k + NZ*i + NZ*NX*j
@@ -209,7 +209,83 @@ void takeDerivative(int dir, gpuinfo gpu, double **waveNum, cufftDoubleComplex *
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Take derivative (dir = 1 => x-direction, 2 => y-direction, 3 => z-direction)
-		multIkKernel_mgpu<<<gridSize, blockSize>>>(dir, gpu.start_y[n], waveNum[n], f[n], fIk[n]);
+		multIkKernel_mgpu<<<gridSize, blockSize>>>(dir, gpu.start_y[n],  grid.kx[n], f[n], fIk[n]);
+	}
+
+	return;  
+}
+
+__global__
+void gradientKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *f, cufftDoubleComplex *f_x, cufftDoubleComplex *f_y, cufftDoubleComplex *f_z)
+{   // Multiples an input array by ik 
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+	const int k = blockIdx.z * blockDim.z + threadIdx.z;
+	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int idx = flatten( j, i, k, NY, NX, NZ2);
+
+  // x-direction
+	f_x[idx].x = -waveNum[i]*f[idx].y;
+	f_x[idx].y = waveNum[i]*f[idx].x;
+
+  // y-direction
+	f_y[idx].x = -waveNum[j+start_y]*f[idx].y; 
+	f_y[idx].y = waveNum[j+start_y]*f[idx].x;
+
+  // z-direction
+	f_z[idx].x = -waveNum[k]*f[idx].y; 
+	f_z[idx].y = waveNum[k]*f[idx].x;
+
+	return;
+}
+
+void gradient(gpudata gpu, griddata grid, cufftDoubleComplex **f, fielddata grad)
+{
+	// Loop through GPUs and multiply by ik in each direction
+	// Note: Data assumed to be transposed during 3D FFt process; k + NZ*i + NZ*NX*j
+	int n;
+	for(n = 0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
+
+		// Take gradient
+		gradientKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], f[n], grad.uh[n], grad.vh[n], grad.wh[n]);
+	}
+
+	return;  
+}
+
+__global__
+void divergenceKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *f_x, cufftDoubleComplex *f_y, cufftDoubleComplex *f_z, cufftDoubleComplex *result)
+{   // Multiples an input array by ik 
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+	const int k = blockIdx.z * blockDim.z + threadIdx.z;
+	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int idx = flatten( j, i, k, NY, NX, NZ2);
+
+  // i*kx*f_x + i*ky*f_y + i*kz*f_z
+	result[idx].x = -waveNum[i]*f_x[idx].y - waveNum[j+start_y]*f_y[idx].y - waveNum[k]*f_z[idx].y; 
+	result[idx].y = waveNum[i]*f_x[idx].x + waveNum[j+start_y]*f_y[idx].x + waveNum[k]*f_z[idx].x ;
+
+	return;
+}
+
+void divergence(gpudata gpu, griddata grid, fielddata f, cufftDoubleComplex **result)
+{
+	// Loop through GPUs and multiply by ik in each direction
+	// Note: Data assumed to be transposed during 3D FFt process; k + NZ*i + NZ*NX*j
+	int n;
+	for(n = 0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
+
+		// Take divergence
+		divergenceKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], f.uh[n], f.vh[n], f.wh[n], result[n]);
 	}
 
 	return;  
@@ -230,7 +306,7 @@ void multAndAddKernel_mgpu(int start_x, cufftDoubleReal *f1, cufftDoubleReal *f2
 	return;
 }
 
-void multAndAdd( gpuinfo gpu, cufftDoubleReal **f1, cufftDoubleReal **f2, cufftDoubleReal **f3)
+void multAndAdd( gpudata gpu, cufftDoubleReal **f1, cufftDoubleReal **f2, cufftDoubleReal **f3)
 {
 	// Loop through GPUs and perform operation: f1*f2 + f3 = f3
 	// Note: Data assumed to be transposed during 3D FFt process; k + NZ*i + NZ*NX*j
@@ -248,47 +324,65 @@ void multAndAdd( gpuinfo gpu, cufftDoubleReal **f1, cufftDoubleReal **f2, cufftD
 	return;  
 }
 
-void formScalarAdvection(fftinfo fft, gpuinfo gpu, cufftDoubleComplex **temp_advective, double **k, fielddata vel, fielddata rhs)
+__global__
+void dotKernel_mgpu(int start_x, cufftDoubleReal *a1, cufftDoubleReal *a2, cufftDoubleReal *a3, cufftDoubleReal *b1, cufftDoubleReal *b2, cufftDoubleReal *b3, cufftDoubleReal *result)
+{	// Function to compute the non-linear terms on the RHS
+
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+	const int k = blockIdx.z * blockDim.z + threadIdx.z;
+	if (((i + start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
+	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
+
+  result[idx] = a1[idx]*b1[idx] + a2[idx]*b2[idx] + a3[idx]*b3[idx];
+
+	return;
+}
+
+void dotProduct( gpudata gpu, fielddata a, fielddata b, cufftDoubleReal **result)
+{
+	// Loop through GPUs and perform dot product, result = a.u*b.u + a.v*b.v + a.w*b.w
+	// Note: Data assumed to be transposed during 3D FFt process; k + NZ*i + NZ*NX*j
+	int n;
+	for(n = 0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n);
+
+		const dim3 blockSize(TX, TY, TZ);
+		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
+
+		// Take derivative (dir = 1 => x-direction, 2 => y-direction, 3 => z-direction)
+		dotKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], a.u[n], a.v[n], a.w[n], b.u[n], b.v[n], b.w[n], result[n]);
+	}
+
+	return;  
+}
+
+void scalarAdvection(fftdata fft, gpudata gpu, griddata grid, fielddata vel, fielddata rhs, fielddata temp)
 {	// Compute the advection term in the scalar equation
 
 	// Zero out right hand side term before beginning calculation
 	int n;
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
-		checkCudaErrors( cudaMemset(rhs.s[n], 0, sizeof(cufftDoubleComplex)*NZ2*NX*gpu.ny[n]) );
+		checkCudaErrors( cudaMemset(rhs.s[n], 0.0, sizeof(cufftDoubleComplex)*NZ2*NX*gpu.ny[n]) );
 	}
 
 	//===============================================================
 	// ( u \dot grad ) z = u * dZ/dx + v * dZ/dy + w * dZ/dz
 	//===============================================================
 
-	// Calculate u*dZdx and add it to RHS
-	// Find du/dz in Fourier space
-	takeDerivative(1, gpu, k, vel.sh, temp_advective);
-	// Transform du/dz to physical space
-	inverseTransform(fft, gpu, temp_advective);
-	// Form term and add to RHS
-	multAndAdd(gpu, vel.u, (cufftDoubleReal **)temp_advective, rhs.s);
-
-
-	// Calculate v*dZdy and add it to RHS
-	// Find du/dz in Fourier space
-	takeDerivative(2, gpu, k, vel.sh, temp_advective);
-	// Transform du/dz to physical space
-	inverseTransform(fft, gpu, temp_advective);
-	// Form term and add to RHS
-	multAndAdd(gpu, vel.v, (cufftDoubleReal **)temp_advective, rhs.s);
-
-
-	// Calculate w*dZdz and add it to RHS
-	// Find du/dz in Fourier space
-	takeDerivative(3, gpu, k, vel.sh, temp_advective);
-	// Transform du/dz to physical space
-	inverseTransform(fft, gpu, temp_advective);
-	// Form term and add to RHS
-	multAndAdd(gpu, vel.w, (cufftDoubleReal **)temp_advective, rhs.s);
+  gradient(gpu, grid, vel.sh, rhs);  // Calculate gradient of passive scalar, store result in rhs.u,v,w
+   // Transform derivatives from Fourier space to physical space
+	inverseTransform(fft, gpu, rhs.uh);
+	inverseTransform(fft, gpu, rhs.vh);
+	inverseTransform(fft, gpu, rhs.wh);
+  dotProduct(gpu, vel, rhs, rhs.s); // Calculates dot product between u,v,w components of vel, rhs; places result in rhs.s
+  // vel.u,v,w must be transformed to physical space before entering this routine
 
 	// rhs_z now holds the advective terms of the scalar equation (in physical domain). 
+	
+	// Transform the rhs of scalar field from physical space to Fourier space for timestepping
+	forwardTransform(fft, gpu, rhs.s);
 	// printf("Scalar advection terms formed...\n");
 
 	return;
@@ -349,7 +443,7 @@ void computeRHSKernel_mgpu(int start_y, double *k1, cufftDoubleComplex *rhs_u1, 
 	return;
 }
 
-void makeRHS(gpuinfo gpu, double **waveNum, fielddata rhs)
+void makeRHS(gpudata gpu, griddata grid, fielddata rhs)
 {	// Function to create the rhs of the N-S equations in Fourier Space
 
 	int n;
@@ -361,7 +455,7 @@ void makeRHS(gpuinfo gpu, double **waveNum, fielddata rhs)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call the kernel
-		computeRHSKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], waveNum[n], rhs.uh[n], rhs.vh[n], rhs.wh[n], rhs.sh[n]);
+		computeRHSKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], rhs.uh[n], rhs.vh[n], rhs.wh[n], rhs.sh[n]);
 		cudaError_t err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));	
@@ -411,7 +505,7 @@ void adamsBashforthKernel_mgpu(double num, int start_y, double *waveNum, cufftDo
 	return;
 }
 
-void timestep(const int flag, gpuinfo gpu, double **k, fielddata vel, fielddata rhs, fielddata rhs_old)
+void timestep(const int flag, gpudata gpu, griddata grid, fielddata vel, fielddata rhs, fielddata rhs_old)
 {
 	int n;
 	for(n=0; n<gpu.nGPUs; ++n){
@@ -423,17 +517,17 @@ void timestep(const int flag, gpuinfo gpu, double **k, fielddata vel, fielddata 
 
 		if(flag){
 			// printf("Using Euler Method\n");
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.uh[n], rhs.uh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.vh[n], rhs.vh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.wh[n], rhs.wh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], k[n], vel.sh[n], rhs.sh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.uh[n], rhs.uh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.vh[n], rhs.vh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.wh[n], rhs.wh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.sh[n], rhs.sh[n]);
 		}
 		else {
 			// printf("Using A-B Method\n");
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.uh[n], rhs.uh[n], rhs_old.uh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.vh[n], rhs.vh[n], rhs_old.vh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], k[n], vel.wh[n], rhs.wh[n], rhs_old.wh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], k[n], vel.sh[n], rhs.sh[n], rhs_old.sh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.uh[n], rhs.uh[n], rhs_old.uh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.vh[n], rhs.vh[n], rhs_old.vh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.wh[n], rhs.wh[n], rhs_old.wh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.sh[n], rhs.sh[n], rhs_old.sh[n]);
 		}
 	}
 
@@ -460,7 +554,7 @@ void updateKernel_mgpu(int start_y, cufftDoubleComplex *rhs_f, cufftDoubleComple
 	return;
 }
 
-void update(gpuinfo gpu, fielddata rhs, fielddata rhs_old)
+void update(gpudata gpu, fielddata rhs, fielddata rhs_old)
 {
 	int n;
 	for(n=0; n<gpu.nGPUs; ++n){
@@ -500,7 +594,7 @@ void scalarFilterkernel_mgpu(int start_x, cufftDoubleReal *f)
 	return;
 }
 
-void scalarFilter(gpuinfo gpu, cufftDoubleReal **f)
+void scalarFilter(gpudata gpu, cufftDoubleReal **f)
 {
 	// Loops through data and looks for spurious values of the scalar field
 	// For a conserved, passive scalar the value should always be 0<=Z<=1
@@ -519,11 +613,27 @@ void scalarFilter(gpuinfo gpu, cufftDoubleReal **f)
 	return;  
 }
 
-void solver_ps(const int euler, fftinfo fft, gpuinfo gpu, fielddata vel, fielddata rhs, fielddata rhs_old, double **k, cufftDoubleComplex **temp_advective)
+void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fielddata vel, fielddata rhs, fielddata rhs_old, fielddata temp)
 {	// Pseudo spectral Navier-Stokes solver with conserved, passive scalar field
 
+	// Dealias primitive variables
+	deAlias(gpu, grid, vel);
+
+	// Inverse transform the velocity to physical space for scalar advective terms
+	inverseTransform(fft, gpu, vel.uh);
+	inverseTransform(fft, gpu, vel.vh);
+	inverseTransform(fft, gpu, vel.wh);
+
+	// Form advective term in scalar equations
+	scalarAdvection(fft, gpu, grid, vel, rhs, temp);
+
+	// Transform velocity back to fourier space
+	forwardTransform(fft, gpu, vel.u);
+	forwardTransform(fft, gpu, vel.v);
+	forwardTransform(fft, gpu, vel.w);
+	
 	// Form the vorticity in Fourier space
-	calcVorticity(gpu, k, vel, rhs);
+	vorticity(gpu, grid, vel, rhs);
 
 	// Inverse Fourier Transform the vorticity to physical space.
 	inverseTransform(fft, gpu, rhs.uh);
@@ -532,24 +642,18 @@ void solver_ps(const int euler, fftinfo fft, gpuinfo gpu, fielddata vel, fieldda
 
 	// printf("Vorticity transformed to physical coordinates...\n");
 
-	// Inverse transform the velocity to physical space to for advective terms
+	// Inverse transform the velocity to physical space for advective terms
 	inverseTransform(fft, gpu, vel.uh);
 	inverseTransform(fft, gpu, vel.vh);
 	inverseTransform(fft, gpu, vel.wh);
 
 	// Form non-linear terms in physical space
-	formCrossProduct(gpu, vel, rhs);
+	crossProduct(gpu, vel, rhs);
 
 	// Transform omegaXu from physical space to fourier space 
 	forwardTransform(fft, gpu, rhs.u);
 	forwardTransform(fft, gpu, rhs.v);
 	forwardTransform(fft, gpu, rhs.w);
-
-	// Form advective terms in scalar equation
-	formScalarAdvection(fft, gpu, temp_advective, k, vel, rhs);
-	
-	// Transform the non-linear term in rhs from physical space to Fourier space for timestepping
-	forwardTransform(fft, gpu, rhs.s);
 
 	// Transform velocity back to fourier space for timestepping
 	forwardTransform(fft, gpu, vel.u);
@@ -557,21 +661,16 @@ void solver_ps(const int euler, fftinfo fft, gpuinfo gpu, fielddata vel, fieldda
 	forwardTransform(fft, gpu, vel.w);
 
 	// Form right hand side of the N-S and scalar equations
-	makeRHS(gpu, k, rhs);
+	makeRHS(gpu, grid, rhs);
 
 	// Dealias the solution by truncating RHS
-	deAlias(gpu, k, rhs);
+	deAlias(gpu, grid, rhs);
 
 	// Step the vector fields forward in time
-	timestep(euler, gpu, k, vel, rhs, rhs_old);
+	timestep(euler, gpu, grid, vel, rhs, rhs_old);
 
 	// Update loop variables to next timestep
 	update(gpu, rhs, rhs_old);
-
-	// // Remove spurious scalar values
-	// inverseTransform(fft, gpus, vel.sh);
-	// scalarFilter(gpus, vel.s);
-	// forwardTransform(fft, gpus, vel.s);
 
 	return;
 }

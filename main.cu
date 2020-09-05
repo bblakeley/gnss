@@ -28,7 +28,7 @@
 #include "declare.h"
 #include "allocate.h"
 
-void splitData(int numGPUs, gpuinfo *gpu) {
+void splitData(int numGPUs, gpudata *gpu) {
 	int i, n;
 	gpu->nGPUs = numGPUs;
 
@@ -127,15 +127,14 @@ int main (void)
 	// StartTimer();
 
 	// Setup wavespace domain
-	initializeWaveNumbers(gpu, k);
+	initializeWaveNumbers(gpu, grid);
 
 	// Launch CUDA kernel to initialize velocity field
 	//importVelocity(gpu, h_vel, vel);
 	//importScalar(gpu, h_vel, vel);
 	
   // initializeTaylorGreen(gpu,vel);
-	initializeJet_Superposition(fft, gpu, k, h_vel, vel, rhs);	// Does not require importData
-	// initializeJet_Convolution(fft, gpu, h_vel, vel, rhs);  // Does not require importData
+	initializeJet_Superposition(fft, gpu, grid, h_vel, vel, rhs);	// Does not require importData
 
 	// Save Initial Data to file (t = 0)
 	// Copy data to host   
@@ -151,10 +150,10 @@ int main (void)
 	forwardTransform(fft, gpu, vel.s);
 
 	// Dealias the solution by truncating RHS
-	deAlias(gpu, k, vel);
+	deAlias(gpu, grid, vel);
 
 	// Calculate statistics at initial condition
-	calcTurbStats_mgpu(0, gpu, fft, k, vel, rhs, stats, Yprofile);
+	calcTurbStats_mgpu(0, gpu, fft, grid, vel, rhs, stats, Yprof);
 	
 	// Synchronize GPUs before entering timestepping loop
 	synchronizeGPUs(nGPUs);
@@ -184,13 +183,13 @@ int main (void)
 		}
 
 		// Call pseudospectral Navier-Stokes solver
-		solver_ps(euler, fft, gpu, vel, rhs, rhs_old, k, temp_advective);
+		solver_ps(euler, fft, gpu, grid, vel, rhs, rhs_old, temp);
 
 		//==============================================================================================
 		// Calculate bulk turbulence statistics and print to screen
 		//==============================================================================================
 		if(c % n_stats == 0){
-			calcTurbStats_mgpu(c, gpu, fft, k, vel, rhs, stats, Yprofile);
+			calcTurbStats_mgpu(c, gpu, fft, grid, vel, rhs, stats, Yprof);
 			// Get elapsed time from Timer
 			steptime = GetTimer();
 		

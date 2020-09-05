@@ -1174,7 +1174,7 @@ void calcSurfaceProps(cufftHandle p, cufftHandle invp, double *waveNum, cufftDou
 // 	return;
 // }
 
-void exchangeHalo_mgpu(gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right){
+void exchangeHalo_mgpu(gpudata gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right){
 	// Exchange halo data
 	int n, idx_s;
 	size_t size;
@@ -1257,7 +1257,7 @@ __global__ void volumeAverage_kernel(double nx, double *f, double *result, const
   return;
 }
 
-double volumeAverage(gpuinfo gpu, double **f, statistics *stats)
+double volumeAverage(gpudata gpu, double **f, statistics *stats)
 {   // Function to calculate volume average of a 3-d field variable
 
   int n;
@@ -1282,7 +1282,7 @@ double volumeAverage(gpuinfo gpu, double **f, statistics *stats)
 }
 
 
-double volumeAverage_rms(gpuinfo gpu, double **f, statistics *stats)
+double volumeAverage_rms(gpudata gpu, double **f, statistics *stats)
 {   // Function to calculate volume average of a 3-d field variable
 
   int n;
@@ -1459,7 +1459,7 @@ void surfaceArea_kernel_mgpu(const int nx, const int w, const int h, const int d
 	return;
 }
 
-double calcSurfaceArea_mgpu(gpuinfo gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right, double iso, statistics *stats){
+double calcSurfaceArea_mgpu(gpudata gpu, cufftDoubleReal **f, cufftDoubleReal **left, cufftDoubleReal **right, double iso, statistics *stats){
 // Function to calculate surface quantities
   int n;
   double SA = 0.0;
@@ -1579,7 +1579,7 @@ void calcVrmsKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, c
 	return;
 }
 
-void calcVrms(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+void calcVrms(gpudata gpu, griddata grid, fielddata vel, statistics *stats)
 { 
   int n;
   for(n=0; n<gpu.nGPUs; ++n){
@@ -1590,7 +1590,7 @@ void calcVrms(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].Vrms, &stats[n].KE);
+		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].Vrms, &stats[n].KE);
 
   }
   
@@ -1664,7 +1664,7 @@ void calcEpsilonKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat
 	return;
 }
 
-void calcDissipationRate(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+void calcDissipationRate(gpudata gpu, griddata grid, fielddata vel, statistics *stats)
 { 
   int n;
   for(n=0; n<gpu.nGPUs; ++n){
@@ -1675,7 +1675,7 @@ void calcDissipationRate(gpuinfo gpu, double **wave, fielddata vel, statistics *
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].epsilon);
+		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].epsilon);
 
   }
   
@@ -1749,7 +1749,7 @@ void calcIntegralLengthKernel_mgpu(int start_y, double *wave, cufftDoubleComplex
 	return;
 }
 
-void calcIntegralLength(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+void calcIntegralLength(gpudata gpu, griddata grid, fielddata vel, statistics *stats)
 { 
   int n;
   for(n=0; n<gpu.nGPUs; ++n){
@@ -1760,7 +1760,7 @@ void calcIntegralLength(gpuinfo gpu, double **wave, fielddata vel, statistics *s
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].l);
+		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].l);
 
   }
   
@@ -1835,7 +1835,7 @@ void calcScalarDissipationKernel_mgpu(int start_y, double *wave, cufftDoubleComp
 	return;
 }
 
-void calcScalarDissipationRate(gpuinfo gpu, double **wave, fielddata vel, statistics *stats)
+void calcScalarDissipationRate(gpudata gpu, griddata grid, fielddata vel, statistics *stats)
 { 
   int n;
   for(n=0; n<gpu.nGPUs; ++n){
@@ -1846,7 +1846,7 @@ void calcScalarDissipationRate(gpuinfo gpu, double **wave, fielddata vel, statis
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], wave[n], vel.sh[n], &stats[n].chi);
+		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.sh[n], &stats[n].chi);
 
   }
   
@@ -1920,7 +1920,7 @@ void calcEnergySpectraKernel_mgpu(int start_y, double *wave, cufftDoubleComplex 
 }
 
 
-void calcSpectra_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, statistics stats)
+void calcSpectra_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fielddata vel, statistics stats)
 { // Calculate sperical energy and scalar spectra
 //	int n;
 
@@ -1944,7 +1944,7 @@ void calcSpectra_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fiel
 	return;
 }
 
-__global__ void calcYprofile_kernel_2D(int nx, double *data, double *prof)
+__global__ void calcYprof_kernel_2D(int nx, double *data, double *prof)
 {
   int idx, s_idx, k;
   double blockSum[TY] = {0.0};
@@ -1987,7 +1987,7 @@ __global__ void calcYprofile_kernel_2D(int nx, double *data, double *prof)
   return;
 }
 
-__global__ void calcYprofile_kernel_1D(int nx, double *data, double *prof)
+__global__ void calcYprof_kernel_1D(int nx, double *data, double *prof)
 { // Kernel to average over X,Z dimensions
   
   int i,k,idx;
@@ -2008,7 +2008,7 @@ __global__ void calcYprofile_kernel_1D(int nx, double *data, double *prof)
   return;
 }
 
-void calcYprofile(gpuinfo gpu, double **f, double **Yprof)
+void calcYprof(gpudata gpu, double **f, double **Yprof)
 { // Average over X,Z directions to create mean profiles in the Y direction
 
 	int n,j;
@@ -2020,13 +2020,13 @@ void calcYprofile(gpuinfo gpu, double **f, double **Yprof)
 	  const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), 1);
 	  const size_t smemSize = TX*TY*sizeof(double);
     // Calculate mean profile of u-velocity
-	  calcYprofile_kernel_2D<<<gridSize,blockSize,smemSize>>>(gpu.nx[n], f[n], Yprof[n]);
+	  calcYprof_kernel_2D<<<gridSize,blockSize,smemSize>>>(gpu.nx[n], f[n], Yprof[n]);
 	  
 	  // 1D kernel - not optimal, but works
-	  // calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], f[n], Yprof[n]);
-	  //calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.v[n], Yprof.v[n]);
-	  //calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.w[n], Yprof.w[n]);
-	  //calcYprofile_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.s[n], Yprof.s[n]);
+	  // calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], f[n], Yprof[n]);
+	  //calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.v[n], Yprof.v[n]);
+	  //calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.w[n], Yprof.w[n]);
+	  //calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.s[n], Yprof.s[n]);
 	}
 	
 	synchronizeGPUs(gpu.nGPUs);
@@ -2054,7 +2054,7 @@ void VectorMagnitude_kernel(const int nx, double *f_x, double *f_y, double *f_z,
 	return;
 }
 
-void VectorMagnitude(gpuinfo gpu, fielddata f){
+void VectorMagnitude(gpudata gpu, fielddata f){
 // Function to calculate vector magnitude based on x,y,z components (stored in f.u,f.v,f.w respectively)
   int n;
 	 
@@ -2073,7 +2073,7 @@ void VectorMagnitude(gpuinfo gpu, fielddata f){
 
 }
 
-void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fielddata vel, fielddata rhs, statistics *stats, profile Yprofile)
+void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fielddata vel, fielddata rhs, statistics *stats, profile Yprof)
 {// Function to call a cuda kernel that calculates the relevant turbulent statistics
 
 	// Synchronize GPUs before calculating statistics
@@ -2103,16 +2103,16 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 //=============================================================================================
 	// Statistics for turbulent velocity field
 	// Launch kernels to calculate stats
-	calcVrms(gpu, wave, vel, stats);
-	calcDissipationRate(gpu, wave, vel, stats);
-	calcIntegralLength(gpu, wave, vel, stats);
-	calcScalarDissipationRate(gpu, wave, vel, stats);
+	calcVrms(gpu, grid, vel, stats);
+	calcDissipationRate(gpu, grid, vel, stats);
+	calcIntegralLength(gpu, grid, vel, stats);
+	calcScalarDissipationRate(gpu, grid, vel, stats);
 
 	// Calculate energy and scalar spectra
 	// calcSpectra_mgpu(c, gpu, fft, wave, vel, stats);
 	
 	// Form the vorticity in Fourier space
-	calcVorticity(gpu, wave, vel, rhs);
+	vorticity(gpu, grid, vel, rhs);
 
 	synchronizeGPUs(nGPUs);
 	
@@ -2151,25 +2151,25 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 	inverseTransform(fft, gpu, vel.sh);
   
   // Calculate mean profiles
-  calcYprofile(gpu, vel.u, Yprofile.u);
-  calcYprofile(gpu, vel.v, Yprofile.v);
-  calcYprofile(gpu, vel.w, Yprofile.w);
-  calcYprofile(gpu, vel.s, Yprofile.s);
+  calcYprof(gpu, vel.u, Yprof.u);
+  calcYprof(gpu, vel.v, Yprof.v);
+  calcYprof(gpu, vel.w, Yprof.w);
+  calcYprof(gpu, vel.s, Yprof.s);
   
   // Calculate fluctuating velocity fields and Reynolds stress profiles
   //ReynoldsDecomp(gpu, vel, rhs);
   
   // Calculate mean profiles
-  //calcYprofile(gpu, rhs.u, Yprofile.uu);
-  //calcYprofile(gpu, rhs.v, Yprofile.vv);
-  //calcYprofile(gpu, rhs.w, Yprofile.ww);
-  //calcYprofile(gpu, rhs.s, Yprofile.ss);
+  //calcYprof(gpu, rhs.u, Yprof.uu);
+  //calcYprof(gpu, rhs.v, Yprof.vv);
+  //calcYprof(gpu, rhs.w, Yprof.ww);
+  //calcYprof(gpu, rhs.s, Yprof.ss);
   
   synchronizeGPUs(nGPUs);			// Synchronize GPUs
 	
   // Calculate surface area of scalar field
   iso = 0.5;
-  stats[0].area_scalar = calcSurfaceArea_mgpu(gpu, vel.s, vel.left, vel.right, iso, stats);
+  stats[0].area_scalar = 0.0; //calcSurfaceArea_mgpu(gpu, vel.s, vel.left, vel.right, iso, stats);
   
   synchronizeGPUs(nGPUs);			// Synchronize GPUs
   
@@ -2189,7 +2189,7 @@ void calcTurbStats_mgpu(const int c, gpuinfo gpu, fftinfo fft, double **wave, fi
 	
 	// Save data to HDD
 	saveStatsData(c, stats[0] );    // Using 0 index to send aggregate data collected in first index
-	saveYprofiles(c, Yprofile );
+	saveYprofs(c, Yprof );
 	
 	return;
 }

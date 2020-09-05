@@ -42,7 +42,7 @@ void initializeTGkernel(int start_x, cufftDoubleReal *f1, cufftDoubleReal *f2, c
 	return;
 }
 
-void initializeTaylorGreen(gpuinfo gpu, fielddata vel)
+void initializeTaylorGreen(gpudata gpu, fielddata vel)
 {
 	int n;
 	for (n = 0; n<gpu.nGPUs; ++n){
@@ -78,7 +78,7 @@ void hpFilterKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *fhat)
 	return;
 }
 
-void hpFilter(gpuinfo gpu, fftinfo fft, double **k, fielddata vel)
+void hpFilter(gpudata gpu, fftdata fft, griddata grid, fielddata vel)
 {	// Filter out low wavenumbers
 
 	// Transform isotropic noise (stored in rhs_u) to Fourier Space
@@ -95,9 +95,9 @@ void hpFilter(gpuinfo gpu, fftinfo fft, double **k, fielddata vel)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call the kernel
-		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], k[n], vel.uh[n]);
-		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], k[n], vel.vh[n]);
-		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], k[n], vel.wh[n]);
+		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n]);
+		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.vh[n]);
+		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.wh[n]);
 	}
 	
 	// Transform filtered noise back to physical space
@@ -138,7 +138,7 @@ void initializeVelocityKernel_mgpu(int start_x, cufftDoubleReal *f1, cufftDouble
 	return;
 }
 
-void initializeVelocity(gpuinfo gpu, fielddata vel)
+void initializeVelocity(gpudata gpu, fielddata vel)
 {
 	int n;
 	for (n = 0; n<gpu.nGPUs; ++n){
@@ -188,7 +188,7 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 	return;
 }
 
-void initializeScalar(gpuinfo gpu, fielddata vel)
+void initializeScalar(gpudata gpu, fielddata vel)
 {
 	int n;
 	for (n = 0; n<gpu.nGPUs; ++n){
@@ -205,7 +205,7 @@ void initializeScalar(gpuinfo gpu, fielddata vel)
 
 }
 
-void initializeData(gpuinfo gpu, fftinfo fft, fielddata vel) // Deprecated
+void initializeData(gpudata gpu, fftdata fft, fielddata vel) // Deprecated
 { // Initialize DNS data
 
 	// initializeVelocity(gpu, vel);
@@ -233,7 +233,7 @@ void velocitySuperpositionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoub
 }
 
 // Adding isotropic velocity field only in shear layer of temporal jet
-void initializeJet_Superposition(fftinfo fft, gpuinfo gpu, double **wave, fielddata h_vel, fielddata vel, fielddata rhs)
+void initializeJet_Superposition(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs)
 {
 	int n;
 
@@ -241,7 +241,7 @@ void initializeJet_Superposition(fftinfo fft, gpuinfo gpu, double **wave, fieldd
 	importData(gpu, h_vel, rhs);
 
 	// High-pass filter to remove lowest wavenumbers
-	hpFilter(gpu, fft, wave, rhs);
+	hpFilter(gpu, fft, grid, rhs);
 
 	// Initialize smooth jet velocity field (hyperbolic tangent profile from da Silva and Pereira)
 	initializeVelocity(gpu, vel);
@@ -283,7 +283,7 @@ void scaleDataKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoubleReal *v, c
 	return;
 }
 
-void scaleData(gpuinfo gpu, fielddata vel, double val)
+void scaleData(gpudata gpu, fielddata vel, double val)
 {	// Subroutine to scale the velocity field prior to convolution
 
 	int n;
@@ -301,123 +301,10 @@ void scaleData(gpuinfo gpu, fielddata vel, double val)
 	return;
 }
 
-
-
-__global__
-void velocityConvolutionKernel_mgpu(int start_y, cufftDoubleComplex *u, cufftDoubleComplex *v, cufftDoubleComplex *w, cufftDoubleComplex *noise_u, cufftDoubleComplex *noise_v, cufftDoubleComplex *noise_w )
-{ // This function is designed to add a 3D isotropic turbulent velocity background perturbation
-	// onto the shear layer region of a temporal jet.  
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
-	const int j = blockIdx.y * blockDim.y + threadIdx.y;
-	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
-	const int idx = flatten( j, i, k, NY, NX, NZ2);
-
-	double a,b,c,d;
-	// Multiplication in complex space: (a+bi)*(c+di) = ac - bd + (ad + bc)i
-	
-	// X-component of velocity
-	a = u[idx].x;
-	b = u[idx].y;
-	c = noise_u[idx].x;
-	d = noise_u[idx].y;
-
-	u[idx].x = (a*c - b*d);		// Real component
-	u[idx].y = (a*d + b*c);		// Imaginary component
-
-	a=0.0; b=0.0; c=0.0; d=0.0;  // Clear a,b,c,d
-
-	// Y-component of velocity
-	a = v[idx].x;
-	b = v[idx].y;
-	c = noise_v[idx].x;
-	d = noise_v[idx].y;	
-
-	v[idx].x = a*c - b*d;		// Real component
-	v[idx].y = a*d + b*c;		// Imaginary component
-
-	a=0.0; b=0.0; c=0.0; d=0.0;  // Clear a,b,c,d
-
-	// W-component of velocity
-	a = w[idx].x;
-	b = w[idx].y;
-	c = noise_w[idx].x;
-	d = noise_w[idx].y;
-
-	w[idx].x = a*c - b*d;		// Real component
-	w[idx].y = a*d + b*c;		// Imaginary component
-
-	// // Zero out rhs
-	// noise_u[idx].x = 0.0;
-	// noise_u[idx].y = 0.0;
-	// noise_v[idx].x = 0.0;
-	// noise_v[idx].y = 0.0;
-	// noise_w[idx].x = 0.0;
-	// noise_w[idx].y = 0.0;
-
-	return;
-}
-
-void velocityConvolution_mgpu(gpuinfo gpu, fielddata vel, fielddata rhs)
-{
-	int n;
-
-	// Launch kernel on GPUs
-	for(n=0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n);
-
-		// Set thread and block dimensions for kernal calls
-		const dim3 blockSize(TX, TY, TZ);
-		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
-
-		// Multiply jet velocity and isotropic noise in Fourier space
-		velocityConvolutionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], vel.uh[n], vel.vh[n], vel.wh[n], rhs.uh[n], rhs.vh[n], rhs.wh[n]);
-	}
-
-	return;
-}
-
-// Adding isotropic velocity field only in shear layer of temporal jet
-void initializeJet_Convolution(fftinfo fft, gpuinfo gpu, fielddata h_vel, fielddata vel, fielddata rhs)
-{
-	// Import isotropic velocity field
-	importData(gpu, h_vel, vel);
-
-	// Scale initial condition to lower value for background noise
-	scaleData(gpu, vel, 0.02);
-
-	// Initialize smooth jet velocity field (hyperbolic tangent profile)
-	initializeVelocity(gpu, rhs);
-
-	// Transform Jet profile (stored in rhs_u) to Fourier Space
-	forwardTransform(fft, gpu, vel.u);
-	forwardTransform(fft, gpu, vel.v);
-	forwardTransform(fft, gpu, vel.w);
-	forwardTransform(fft, gpu, rhs.u);
-	forwardTransform(fft, gpu, rhs.v);
-	forwardTransform(fft, gpu, rhs.w);
-
-	// Convolve initial jet velocity with isotropic noise
-	velocityConvolution_mgpu(gpu, vel, rhs);
-	printf("Convolving Jet velocity profile with isotropic noise...\n");
-
-	inverseTransform(fft, gpu, vel.uh);
-	inverseTransform(fft, gpu, vel.vh);
-	inverseTransform(fft, gpu, vel.wh);
-
-	initializeScalar(gpu, vel);
-
-	synchronizeGPUs(gpu.nGPUs);
-
-	return;
-}
-
-
-
 __global__
 void waveNumber_kernel(double *waveNum)
 {   // Creates the wavenumber vectors used in Fourier space
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int i = blockIdx.x*blockDim.x + threadIdx.x;
 
 	if (i >= NX) return;
 
@@ -429,14 +316,14 @@ void waveNumber_kernel(double *waveNum)
 	return;
 }
 
-void initializeWaveNumbers(gpuinfo gpu, double **waveNum)
+void initializeWaveNumbers(gpudata gpu, griddata grid)
 {    // Initialize wavenumbers in Fourier space
 
 	int n;
 	for (n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
 
-		waveNumber_kernel<<<divUp(NX,TX), TX>>>(waveNum[n]);
+		waveNumber_kernel<<<divUp(NX,TX), TX>>>(grid.kx[n]);
 	}
 
 	printf("Wave domain setup complete..\n");

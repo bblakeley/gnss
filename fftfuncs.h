@@ -2,12 +2,14 @@
 #define FFT_H
 #include "struct_def.h"
 
-void plan1dFFT(int nGPUs, fftinfo ftt);
+void plan1dFFT(int nGPUs, fftdata ftt);
 
-void plan2dFFT(gpuinfo gpu, fftinfo fft);
+void plan2dFFT(gpudata gpu, fftdata fft);
 
-void forwardTransform(fftinfo fft, gpuinfo gpu, cufftDoubleReal **f );
+void plan3dFFT(fftdata fft);
 
-void inverseTransform(fftinfo fft, gpuinfo gpu, cufftDoubleComplex **f);
+void forwardTransform(fftdata fft, gpudata gpu, cufftDoubleReal **f );
+
+void inverseTransform(fftdata fft, gpudata gpu, cufftDoubleComplex **f);
 
 #endif
