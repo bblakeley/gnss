@@ -18,8 +18,8 @@ typedef struct statistics{
 	double l;								  // Integral length scale
 	double lambda;						// Taylor Micro scale
 	double chi;							  // Scalar dissipation rate
-	double area_scalar;			  // Area of the iso-scalar surface
-	double area_omega;				  // Area of the iso-enstrophy surface (Turbulent/non-turbulent interface)
+	double *area_scalar;			  // Area of the iso-scalar surface
+	double *area_omega;				  // Area of the iso-enstrophy surface (Turbulent/non-turbulent interface)
 	double energy_spect;			// Spectral energy in spherical wave number shells
 	double omega;             // Volume average of vorticity magnitude
 	double omega_x;           // Volume average of x-component of vorticity
@@ -78,6 +78,10 @@ typedef struct profile{
   double **v;
   double **w;
   double **s;
+  double **uu;        // profile of U component of velocity
+  double **vv;
+  double **ww;
+  double **ss;
 }profile;
 
 #endif

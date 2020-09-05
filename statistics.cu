@@ -1476,6 +1476,8 @@ double calcSurfaceArea_mgpu(gpudata gpu, cufftDoubleReal **f, cufftDoubleReal **
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 		const size_t smemSize = (TX + 2*RAD)*(TY + 2*RAD)*(TZ + 2*RAD)*sizeof(double);
 
+    stats[n].tmp=0.0; // Initialize temp value to zero
+    
 		// Calculate surface area based on the value of iso
 		surfaceArea_kernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.nx[n], NX, NY, NZ, f[n], left[n], right[n], iso, &stats[n].tmp);
 	}
@@ -1550,31 +1552,6 @@ void calcVrmsKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, c
 		atomicAdd(RMS, blockSum/3.0);
 
 	}
-	
-//	if (s_sta == 0){
-//    for(int kk=0; kk<s_d; ++kk){
-//      vel_mag[flatten(s_col,s_row,0,s_h,s_w,s_d)] += vel_mag[flatten(s_col,s_row,kk,s_h,s_w,s_d)];
-//    }
-//    if(s_row == 0){
-//      for(int jj=0; jj<s_h; ++jj){
-//        vel_mag[flatten(s_col,0,0,s_h,s_w,s_d)] += vel_mag[flatten(s_col,jj,0,s_h,s_w,s_d)];
-//      }
-//      if(s_col == 0){
-//        for(int ii=0; ii<s_w; ++ii){
-//          vel_mag[flatten(0,0,0,s_h,s_w,s_d)] += vel_mag[flatten(ii,0,0,s_h,s_w,s_d)];
-//        }
-//        
-//		    __syncthreads();
-
-//		    // Step 3: Add all blocks together into device memory using Atomic operations (requires -arch=sm_60 or higher)
-
-//		    // Kinetic Energy
-//		    atomicAdd(KE, vel_mag[0]/2.0);
-//		    // RMS velocity
-//		    atomicAdd(RMS, vel_mag[0]/3.0);
-//		  }
-//    }
-//	}
 
 	return;
 }
@@ -1962,10 +1939,20 @@ __global__ void calcYprof_kernel_2D(int nx, double *data, double *prof)
 	tmp[s_idx] = 0.0;
 	prof[j] = 0.0;
 	
-	// Sum z-vectors into 2-D plane
-	for(k=0; k<NZ; ++k){
-	  idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
-	  tmp[s_idx] += data[idx]/(NX*NZ);
+	switch(type){
+	  case 0: 
+	  // Sum z-vectors into 2-D plane
+	  for(k=0; k<NZ; ++k){
+	    idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
+	    tmp[s_idx] += data[idx]/(NX*NZ);    // Simple average
+	  } break;
+	  
+	  case 1:
+	  // Sum z-vectors into 2-D plane
+	  for(k=0; k<NZ; ++k){
+	    idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
+	    tmp[s_idx] += data[idx]*data[idx]/(NX*NZ);  // Squaring argument for rms calculation
+	  } break;
 	}
 
 	__syncthreads();
@@ -1997,15 +1984,25 @@ __global__ void calcYprof_kernel_1D(int nx, double *data, double *prof)
 	// Initialize to zero
 	prof[j] = 0.0;
 	
-  // Average over x and z directions
-  for(i=0; i<NZ; i++){
-    for(k=0; k<nx; k++){
-      idx = flatten(i,j,k,nx,NY,2*NZ2);
-      prof[j] += data[idx]/(NX*NZ);   // Sum all x,z components into y profile
-    }
-  }
+	for(n=0; n<gpu.nGPUs; ++n){
+		cudaSetDevice(n); 
 
-  return;
+    const dim3 blockSize(TX, TY, 1);
+	  const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), 1);
+	  const size_t smemSize = TX*TY*sizeof(double);
+    // Calculate mean profile of u-velocity
+	  calcYprofile_kernel_2D<<<gridSize,blockSize,smemSize>>>(gpu.nx[n], f[n], Yprof[n], 0);
+	  
+	}
+	
+	synchronizeGPUs(gpu.nGPUs);
+	for(n=1;n<gpu.nGPUs;++n){
+	  for(j=0;j<NY;++j){
+	    Yprof[0][j] += Yprof[n][j];
+	  }
+	}
+	
+	return;
 }
 
 void calcYprof(gpudata gpu, double **f, double **Yprof)
@@ -2035,6 +2032,11 @@ void calcYprof(gpudata gpu, double **f, double **Yprof)
 	    Yprof[0][j] += Yprof[n][j];
 	  }
 	}
+	
+	// Take square root to get rms values
+	for(j=0;j<NY;++j){
+	    Yprof[0][j] += sqrt(Yprof[0][j]);
+	  }
 	
 	return;
 }
@@ -2077,8 +2079,9 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 {// Function to call a cuda kernel that calculates the relevant turbulent statistics
 
 	// Synchronize GPUs before calculating statistics
-	int n, nGPUs;
-	double iso;
+	int i, n, nGPUs;
+	double Wiso[]={0.0001,0.002,0.005,0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0,2.0,5.0,10.0,20.0,50.0,100.0};
+	double Ziso[]={0.001,0.002,0.005,0.01,0.02,0.03,0.04,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6};
 
 	// Make local copy of number of GPUs (for readability)
 	nGPUs = gpu.nGPUs;	
@@ -2092,8 +2095,10 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 	  stats[n].l            = 0.0;
 	  stats[n].lambda       = 0.0;
 	  stats[n].chi          = 0.0;
-	  stats[n].area_scalar  = 0.0;
-	  stats[n].area_omega   = 0.0;
+	  for(i=0; i<64; ++i) {
+	    stats[n].area_scalar[i]  = 0.0;  
+	    stats[n].area_omega[i]   = 0.0;
+	  }
 	  stats[n].energy_spect = 0.0;
 	}
 
@@ -2110,7 +2115,7 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 
 	// Calculate energy and scalar spectra
 	// calcSpectra_mgpu(c, gpu, fft, wave, vel, stats);
-	
+
 	// Form the vorticity in Fourier space
 	vorticity(gpu, grid, vel, rhs);
 
@@ -2122,6 +2127,8 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
   
   // Compute vorticity calculations first
   //==============================================
+	calcVorticity(gpu, wave, vel, rhs);   // Form the vorticity in Fourier space
+
 	// Transform vorticity to physical domain
 	inverseTransform(fft, gpu, rhs.uh);
 	inverseTransform(fft, gpu, rhs.vh);
@@ -2139,8 +2146,9 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 	stats[0].omega   = volumeAverage(gpu, rhs.s, stats);	
 	
 	// Calculate surface area of vorticity magnitude
-  iso = stats[0].omega;
-  stats[0].area_omega = calcSurfaceArea_mgpu(gpu, rhs.s, vel.left, vel.right, iso, stats);
+  //for(i=0;i<19;++i){
+  //  stats[0].area_omega[i] = calcSurfaceArea_mgpu(gpu, rhs.s, vel.left, vel.right, Wiso[i], stats);
+  //}
 	
 	// Velocity statistics
 	//=================================================
