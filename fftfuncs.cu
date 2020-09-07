@@ -189,6 +189,26 @@ void plan1dFFT(int nGPUs, fftdata fft){
     return;
 }
 
+void plan3dFFT(fftdata fft){
+// This function plans a 3-dimensional FFT
+  cufftResult result;
+
+	// Create forward and inverse plans
+	result = cufftPlan3d(&fft.p3d[0], NX, NY, NZ, CUFFT_D2Z);
+	if ( result != CUFFT_SUCCESS){
+		fprintf(stderr, "CUFFT error: ExecD2Z Planning failed");
+		printf(", Error code %d\n", result);	
+	}
+
+	result = cufftPlan3d(&fft.invp3d[0], NX, NY, NZ, CUFFT_Z2D); 
+	if (result != CUFFT_SUCCESS){
+		fprintf(stderr, "CUFFT error: ExecZ2D Planning failed");
+		printf(", Error code %d\n",result);
+	}
+    
+    return;
+}
+
 void Execute1DFFT_Forward(cufftHandle plan, int NY_per_GPU, cufftDoubleComplex *f, cufftDoubleComplex *fhat)
 {
 
@@ -227,15 +247,15 @@ void Execute1DFFT_Inverse(cufftHandle plan, int NY_per_GPU, cufftDoubleComplex *
 void forwardTransform(fftdata fft, gpudata gpu, cufftDoubleReal **f )
 { // Transform from physical to wave domain
 
-	int RESULT, n;
-
+	int result, n;
+  
 	// Take FFT in Z and Y directions
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
 
-		RESULT = cufftExecD2Z(fft.p2d[n], f[n], (cufftDoubleComplex *)f[n]);
-		if ( RESULT != CUFFT_SUCCESS){
-			printf("CUFFT error: ExecD2Z failed on line %d, Error code %d\n", __LINE__, RESULT);
+		result = cufftExecD2Z(fft.p2d[n], f[n], (cufftDoubleComplex *)f[n]);
+		if ( result != CUFFT_SUCCESS){
+			printf("CUFFT error: ExecD2Z failed on line %d, Error code %d\n", __LINE__, result);
 		return; }
 		// printf("Taking 2D forward FFT on GPU #%2d\n",n);
 	}
@@ -250,8 +270,8 @@ void forwardTransform(fftdata fft, gpudata gpu, cufftDoubleReal **f )
 		Execute1DFFT_Forward(fft.p1d[n], gpu.ny[n], fft.temp[n], (cufftDoubleComplex *)f[n]);
 		// printf("Taking 1D forward FFT on GPU #%2d\n",n);
 	}
-
-	// Results remain in transposed coordinates
+	
+	// results remain in transposed coordinates
 
 	// printf("Forward Transform Completed...\n");
 
@@ -260,8 +280,8 @@ void forwardTransform(fftdata fft, gpudata gpu, cufftDoubleReal **f )
 
 void inverseTransform(fftdata fft, gpudata gpu, cufftDoubleComplex **f)
 { // Transform variables from wavespace to the physical domain 
-	int RESULT, n;
-
+	int result, n;
+	
 	// Data starts in transposed coordinates, x,y flipped
 
 	// Take FFT in X direction (which has been transposed to what used to be the Y dimension)
@@ -277,13 +297,13 @@ void inverseTransform(fftdata fft, gpudata gpu, cufftDoubleComplex **f)
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
 		// Take inverse FFT in Z and Y direction
-		RESULT = cufftExecZ2D(fft.invp2d[n], f[n], (cufftDoubleReal *)f[n]);
-		if ( RESULT != CUFFT_SUCCESS){
-			printf("CUFFT error: ExecD2Z failed on line %d, Error code %d\n", __LINE__, RESULT);
+		result = cufftExecZ2D(fft.invp2d[n], f[n], (cufftDoubleReal *)f[n]);
+		if ( result != CUFFT_SUCCESS){
+			printf("CUFFT error: ExecD2Z failed on line %d, Error code %d\n", __LINE__, result);
 		return; }
 		// printf("Taking 2D inverse FFT on GPU #%2d\n",n);
 	}
-
+	
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
 		const dim3 blockSize(TX, TY, TZ);

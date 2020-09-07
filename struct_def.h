@@ -18,8 +18,8 @@ typedef struct statistics{
 	double l;								  // Integral length scale
 	double lambda;						// Taylor Micro scale
 	double chi;							  // Scalar dissipation rate
-	double area_scalar;			  // Area of the iso-scalar surface
-	double area_omega;				// Area of the iso-enstrophy surface (Turbulent/non-turbulent interface)
+	double *area_scalar;			  // Area of the iso-scalar surface
+	double *area_omega;				  // Area of the iso-enstrophy surface (Turbulent/non-turbulent interface)
 	double energy_spect;			// Spectral energy in spherical wave number shells
 	double omega;             // Volume average of vorticity magnitude
 	double omega_x;           // Volume average of x-component of vorticity
@@ -32,6 +32,8 @@ typedef struct fftdata{
 	cufftHandle *p1d;									  // cuFFT Plan info for 1D Transform
 	cufftHandle *p2d;									  // cuFFT Plan info for 2D Transform
 	cufftHandle *invp2d;								// cuFFT Plan info for inverse 2D Transform
+	cufftHandle *p3d;
+	cufftHandle *invp3d;
 	size_t *wsize_f;										// Size of workspace needed for forward transform
 	size_t *wsize_i;										// Size of workspace needed for inverse transform
 	cufftDoubleComplex **wspace;				// Pointer to cuFFT workspace to perform FFTs
@@ -79,6 +81,10 @@ typedef struct profile{
   double **w;
   double **s;
   double **c;
+  double **uu;        // profile of U component of velocity
+  double **vv;
+  double **ww;
+  double **ss;
 }profile;
 
 #endif

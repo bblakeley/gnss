@@ -14,7 +14,6 @@ profile Yprof;      // X,Z averaged profiles of important variables
 
 // Wavenumber vector
 griddata grid;      // Grid data (dimensions, vectors, wavenumbers)
-//double **k;
 
 // Velocity and scalar fields
 fielddata h_vel;        // Primitive variables resident on the host

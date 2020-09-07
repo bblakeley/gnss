@@ -247,7 +247,6 @@ void gradient(gpudata gpu, griddata grid, cufftDoubleComplex **f, fielddata grad
 	int n;
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
-		
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
@@ -281,7 +280,6 @@ void divergence(gpudata gpu, griddata grid, fielddata f, cufftDoubleComplex **re
 	int n;
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
-		
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
@@ -335,7 +333,6 @@ void dotKernel_mgpu(int start_x, cufftDoubleReal *a1, cufftDoubleReal *a2, cufft
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
 
   result[idx] = a1[idx]*b1[idx] + a2[idx]*b2[idx] + a3[idx]*b3[idx];
-		
 	return;
 }
 
@@ -346,7 +343,6 @@ void dotProduct( gpudata gpu, fielddata a, fielddata b, cufftDoubleReal **result
 	int n;
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
-		
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
@@ -702,7 +698,7 @@ void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fieldda
 	// Transform the non-linear term in rhs from physical space to Fourier space for timestepping
 	forwardTransform(fft, gpu, rhs.s);
 	forwardTransform(fft, gpu, rhs.c);
-		
+
 	// Form the vorticity in Fourier space
 	vorticity(gpu, grid, vel, rhs);
 
@@ -724,7 +720,6 @@ void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fieldda
 	forwardTransform(fft, gpu, rhs.v);
 	forwardTransform(fft, gpu, rhs.w);
 
-	
 	// Transform velocity back to fourier space for timestepping
 	forwardTransform(fft, gpu, vel.u);
 	forwardTransform(fft, gpu, vel.v);
@@ -741,11 +736,6 @@ void solver_ps(const int euler, fftdata fft, gpudata gpu, griddata grid, fieldda
 
 	// Update loop variables to next timestep
 	update(gpu, rhs, rhs_old);
-
-	// // Remove spurious scalar values
-	// inverseTransform(fft, gpus, vel.sh);
-	// scalarFilter(gpus, vel.s);
-	// forwardTransform(fft, gpus, vel.s);
 
 	return;
 }

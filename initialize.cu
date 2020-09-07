@@ -297,7 +297,7 @@ void scaleData(gpudata gpu, fielddata vel, double val)
 __global__
 void waveNumber_kernel(double *waveNum)
 {   // Creates the wavenumber vectors used in Fourier space
-	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int i = blockIdx.x*blockDim.x + threadIdx.x;
 
 	if (i >= NX) return;
 

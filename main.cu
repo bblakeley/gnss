@@ -135,7 +135,6 @@ int main (void)
 	
   // initializeTaylorGreen(gpu,vel);
 	initializeJet_Superposition(fft, gpu, grid, h_vel, vel, rhs);	// Does not require importData
-	// initializeJet_Convolution(fft, gpu, h_vel, vel, rhs);  // Does not require importData
 
 	// Save Initial Data to file (t = 0)
 	// Copy data to host   
