@@ -166,10 +166,10 @@ void saveStatsData(const int c, statistics stats)
 	writeStats(c, "omega_z", stats.omega_z);
 	
 	// Loop required to write statistics that depend on a second variable
-	for(i=0;i<64;++i){
-		writeStats(1, "area_z", stats.area_scalar[i]);
-	  writeStats(1, "area_omega" , stats.area_omega[i]);
-	}
+	//for(i=0;i<64;++i){
+	//	writeStats(1, "area_z", stats.area_scalar[i]);
+	//  writeStats(1, "area_omega" , stats.area_omega[i]);
+	//}
 	
   snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
 	printf("Statistics data written to %s \n", title);

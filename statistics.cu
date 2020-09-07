@@ -1939,20 +1939,10 @@ __global__ void calcYprof_kernel_2D(int nx, double *data, double *prof)
 	tmp[s_idx] = 0.0;
 	prof[j] = 0.0;
 	
-	switch(type){
-	  case 0: 
-	  // Sum z-vectors into 2-D plane
-	  for(k=0; k<NZ; ++k){
-	    idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
-	    tmp[s_idx] += data[idx]/(NX*NZ);    // Simple average
-	  } break;
-	  
-	  case 1:
-	  // Sum z-vectors into 2-D plane
-	  for(k=0; k<NZ; ++k){
-	    idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
-	    tmp[s_idx] += data[idx]*data[idx]/(NX*NZ);  // Squaring argument for rms calculation
-	  } break;
+	// Sum z-vectors into 2-D plane
+	for(k=0; k<NZ; ++k){
+	  idx = flatten(i,j,k,nx,NY,2*NZ2);   // Using padded index for in-place FFT
+	  tmp[s_idx] += data[idx]/(NX*NZ);
 	}
 
 	__syncthreads();
@@ -1974,37 +1964,6 @@ __global__ void calcYprof_kernel_2D(int nx, double *data, double *prof)
   return;
 }
 
-__global__ void calcYprof_kernel_1D(int nx, double *data, double *prof)
-{ // Kernel to average over X,Z dimensions
-  
-  int i,k,idx;
-	const int j = blockIdx.x * blockDim.x + threadIdx.x;
-	if(j >= NY) return;
-	
-	// Initialize to zero
-	prof[j] = 0.0;
-	
-	for(n=0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n); 
-
-    const dim3 blockSize(TX, TY, 1);
-	  const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), 1);
-	  const size_t smemSize = TX*TY*sizeof(double);
-    // Calculate mean profile of u-velocity
-	  calcYprofile_kernel_2D<<<gridSize,blockSize,smemSize>>>(gpu.nx[n], f[n], Yprof[n], 0);
-	  
-	}
-	
-	synchronizeGPUs(gpu.nGPUs);
-	for(n=1;n<gpu.nGPUs;++n){
-	  for(j=0;j<NY;++j){
-	    Yprof[0][j] += Yprof[n][j];
-	  }
-	}
-	
-	return;
-}
-
 void calcYprof(gpudata gpu, double **f, double **Yprof)
 { // Average over X,Z directions to create mean profiles in the Y direction
 
@@ -2018,12 +1977,7 @@ void calcYprof(gpudata gpu, double **f, double **Yprof)
 	  const size_t smemSize = TX*TY*sizeof(double);
     // Calculate mean profile of u-velocity
 	  calcYprof_kernel_2D<<<gridSize,blockSize,smemSize>>>(gpu.nx[n], f[n], Yprof[n]);
-	  
-	  // 1D kernel - not optimal, but works
-	  // calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], f[n], Yprof[n]);
-	  //calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.v[n], Yprof.v[n]);
-	  //calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.w[n], Yprof.w[n]);
-	  //calcYprof_kernel_1D<<<divUp(NY,TX),TX>>>(gpu.nx[n], vel.s[n], Yprof.s[n]);
+
 	}
 	
 	synchronizeGPUs(gpu.nGPUs);
@@ -2032,11 +1986,6 @@ void calcYprof(gpudata gpu, double **f, double **Yprof)
 	    Yprof[0][j] += Yprof[n][j];
 	  }
 	}
-	
-	// Take square root to get rms values
-	for(j=0;j<NY;++j){
-	    Yprof[0][j] += sqrt(Yprof[0][j]);
-	  }
 	
 	return;
 }
@@ -2080,8 +2029,8 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 
 	// Synchronize GPUs before calculating statistics
 	int i, n, nGPUs;
-	double Wiso[]={0.0001,0.002,0.005,0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0,2.0,5.0,10.0,20.0,50.0,100.0};
-	double Ziso[]={0.001,0.002,0.005,0.01,0.02,0.03,0.04,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6};
+	//double Wiso[]={0.0001,0.002,0.005,0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0,2.0,5.0,10.0,20.0,50.0,100.0};
+	//double Ziso[]={0.001,0.002,0.005,0.01,0.02,0.03,0.04,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6};
 
 	// Make local copy of number of GPUs (for readability)
 	nGPUs = gpu.nGPUs;	
@@ -2095,10 +2044,10 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 	  stats[n].l            = 0.0;
 	  stats[n].lambda       = 0.0;
 	  stats[n].chi          = 0.0;
-	  for(i=0; i<64; ++i) {
-	    stats[n].area_scalar[i]  = 0.0;  
-	    stats[n].area_omega[i]   = 0.0;
-	  }
+	  //for(i=0; i<64; ++i) {
+	  //  stats[n].area_scalar[i]  = 0.0;  
+	  //  stats[n].area_omega[i]   = 0.0;
+	  //}
 	  stats[n].energy_spect = 0.0;
 	}
 
@@ -2127,7 +2076,6 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
   
   // Compute vorticity calculations first
   //==============================================
-	calcVorticity(gpu, wave, vel, rhs);   // Form the vorticity in Fourier space
 
 	// Transform vorticity to physical domain
 	inverseTransform(fft, gpu, rhs.uh);
@@ -2146,9 +2094,8 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 	stats[0].omega   = volumeAverage(gpu, rhs.s, stats);	
 	
 	// Calculate surface area of vorticity magnitude
-  //for(i=0;i<19;++i){
-  //  stats[0].area_omega[i] = calcSurfaceArea_mgpu(gpu, rhs.s, vel.left, vel.right, Wiso[i], stats);
-  //}
+ // iso = stats[0].omega;
+  //stats[0].area_omega = 0.0; //calcSurfaceArea_mgpu(gpu, rhs.s, vel.left, vel.right, Wiso, stats);
 	
 	// Velocity statistics
 	//=================================================
@@ -2164,20 +2111,11 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
   calcYprof(gpu, vel.w, Yprof.w);
   calcYprof(gpu, vel.s, Yprof.s);
   
-  // Calculate fluctuating velocity fields and Reynolds stress profiles
-  //ReynoldsDecomp(gpu, vel, rhs);
-  
-  // Calculate mean profiles
-  //calcYprof(gpu, rhs.u, Yprof.uu);
-  //calcYprof(gpu, rhs.v, Yprof.vv);
-  //calcYprof(gpu, rhs.w, Yprof.ww);
-  //calcYprof(gpu, rhs.s, Yprof.ss);
-  
   synchronizeGPUs(nGPUs);			// Synchronize GPUs
 	
   // Calculate surface area of scalar field
-  iso = 0.5;
-  stats[0].area_scalar = 0.0; //calcSurfaceArea_mgpu(gpu, vel.s, vel.left, vel.right, iso, stats);
+  // iso = 0.5;
+  //stats[0].area_scalar = 0.0; //calcSurfaceArea_mgpu(gpu, vel.s, vel.left, vel.right, Ziso, stats);
   
   synchronizeGPUs(nGPUs);			// Synchronize GPUs
   
