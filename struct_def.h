@@ -38,7 +38,8 @@ typedef struct fftdata{
 	size_t *wsize_i;										// Size of workspace needed for inverse transform
 	cufftDoubleComplex **wspace;				// Pointer to cuFFT workspace to perform FFTs
 	cufftDoubleComplex **temp;					// Pointer to temporary array used in transpose
-	cufftDoubleComplex **temp_reorder;	// Pointer to temporary array used in transpose
+	cufftDoubleComplex **temp_reorder_f;	// Pointer to temporary array used in transpose
+	cufftDoubleComplex **temp_reorder_i;	// Pointer to temporary array used in transpose
 }fftdata;
 
 typedef struct fielddata{

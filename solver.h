@@ -10,4 +10,6 @@ void takeDerivative(int dir, gpudata gpu, double **waveNum, cufftDoubleComplex *
 
 void vorticity(gpudata gpu, griddata grid, fielddata vel, fielddata rhs);
 
+void gradient(gpudata gpu, griddata grid, cufftDoubleComplex **f, fielddata grad);
+
 #endif

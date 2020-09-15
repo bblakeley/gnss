@@ -39,7 +39,8 @@ void allocate_memory(){
 	cudaHostAlloc((void**)&fft.wsize_i, 		 nGPUs*sizeof(size_t *), 						 cudaHostAllocMapped);		// Size of workspace required for inverse transform
 	cudaHostAlloc((void**)&fft.wspace, 			 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Array of pointers to FFT workspace on each device
 	cudaHostAlloc((void**)&fft.temp, 				 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Array of pointers to scratch (temporary) memory on each device
-	cudaHostAlloc((void**)&fft.temp_reorder, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Same as above, different temp variable
+	cudaHostAlloc((void**)&fft.temp_reorder_f, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Same as above, different temp variable
+	cudaHostAlloc((void**)&fft.temp_reorder_i, nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);		// Same as above, different temp variable
 	
 	// Allocate memory on host to store averaged profile data
 	cudaHostAlloc((void**)&Yprof,         sizeof(profile),   					       cudaHostAllocMapped);
@@ -51,6 +52,8 @@ void allocate_memory(){
 	// Allocate pinned memory on the host side that stores array of pointers
 	cudaHostAlloc((void**)&grid, sizeof(fielddata), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&grid.kx, nGPUs*sizeof(double *), cudaHostAllocMapped);
+	cudaHostAlloc((void**)&grid.ky, nGPUs*sizeof(double *), cudaHostAllocMapped);
+	cudaHostAlloc((void**)&grid.kz, nGPUs*sizeof(double *), cudaHostAllocMapped);
 
 	// Allocate memory on host
 	cudaHostAlloc((void**)&h_vel, sizeof(fielddata), cudaHostAllocMapped);
@@ -97,6 +100,8 @@ void allocate_memory(){
 		h_vel.s[n] = (double *)malloc(sizeof(complex double)*gpu.nx[n]*NY*NZ2);
 
 		checkCudaErrors( cudaMalloc((void **)&grid.kx[n], sizeof(double)*NX ) );
+		checkCudaErrors( cudaMalloc((void **)&grid.ky[n], sizeof(double)*NY ) );
+		checkCudaErrors( cudaMalloc((void **)&grid.kz[n], sizeof(double)*NZ ) );
 
 		// Allocate memory for velocity fields
 		checkCudaErrors( cudaMalloc((void **)&vel.uh[n],    sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) ); 
@@ -120,7 +125,8 @@ void allocate_memory(){
 
 		checkCudaErrors( cudaMalloc((void **)&temp.uh[n],   sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 		checkCudaErrors( cudaMalloc((void **)&fft.temp[n], 			 	 sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
-		checkCudaErrors( cudaMalloc((void **)&fft.temp_reorder[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&fft.temp_reorder_f[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NZ2) );
+		checkCudaErrors( cudaMalloc((void **)&fft.temp_reorder_i[n], sizeof(cufftDoubleComplex)*gpu.ny[n]*NZ2) );
 		
 		// Statistics
 		checkCudaErrors( cudaMallocManaged( (void **)&stats[n], sizeof(statistics) ));
@@ -157,6 +163,9 @@ void allocate_memory(){
 		cudaSetDevice(n);
 
 		checkCudaErrors( cudaMemset(grid.kx[n], 0.0, sizeof(double)*NX) );
+		checkCudaErrors( cudaMemset(grid.ky[n], 0.0, sizeof(double)*NY) );
+		checkCudaErrors( cudaMemset(grid.kz[n], 0.0, sizeof(double)*NZ) );
+		
 
 		checkCudaErrors( cudaMemset(vel.u[n], 0.0, sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
 		checkCudaErrors( cudaMemset(vel.v[n], 0.0, sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2) );
@@ -211,10 +220,13 @@ void deallocate_memory(){
 		cudaSetDevice(n);
 
 		cudaFree(fft.temp[n]);
-		cudaFree(fft.temp_reorder[n]);
+		cudaFree(fft.temp_reorder_f[n]);
+		cudaFree(fft.temp_reorder_i[n]);
    	cudaFree(fft.wspace[n]);
 
 		cudaFree(grid.kx[n]);
+		cudaFree(grid.ky[n]);
+		cudaFree(grid.kz[n]);
 
 		free(h_vel.u[n]);
 		free(h_vel.v[n]);
@@ -261,6 +273,8 @@ void deallocate_memory(){
 	cudaFreeHost(gpu.start_y);
 
 	cudaFreeHost(grid.kx);
+	cudaFreeHost(grid.ky);
+	cudaFreeHost(grid.kz);
 	cudaFreeHost(&grid);
 
 	cudaFreeHost(temp.uh);
@@ -270,7 +284,8 @@ void deallocate_memory(){
 	cudaFreeHost(fft.wsize_i);
 	cudaFreeHost(fft.wspace);
 	cudaFreeHost(fft.temp);
-	cudaFreeHost(fft.temp_reorder);
+	cudaFreeHost(fft.temp_reorder_f);
+	cudaFreeHost(fft.temp_reorder_i);
 	cudaFreeHost(&fft);
 
 	cudaFreeHost(vel.uh);

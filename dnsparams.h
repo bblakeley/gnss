@@ -8,28 +8,31 @@
 
 // Temporal Jet, following daSilva 2008, PoF
 #define NX 256
-#define NY 256
+#define NY 384
 #define NZ 256
 #define NZ2 (NZ/2 + 1)
 #define NN (NX*NY*NZ)
 #define PI (M_PI)
-#define LX (2*PI)
-#define LY (2*PI)
-#define LZ (2*PI)
+#define LX (2.0*PI)
+#define LY (3.0*PI)
+#define LZ (2.0*PI)
 #define DX (LX/NX)
 #define n_checkpoint 1000		// Number of steps to take between saving full 3D fields for checkpointing
 #define n_vis 100	// Number of timesteps to take between saving 2D slices of field data
 #define n_stats 100		// Number of timesteps to take between calculating stats data
 #define dt .002 	// Timestep
-#define nt 12000		// Total number of timesteps to take in the simulation
-#define H (2.0*PI/6.0)
+#define nt 18000		// Total number of timesteps to take in the simulation
+#define H (LY/6.0)
 #define theta (H/35.0)
-#define nu (H/2200.0)
-#define Re (1.0/nu)
+#define Re 3200.0
+#define nu (H/Re)
 #define Sc 0.7
-#define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
+// #define alias_filter (2.0/3.0)			// De-alias using the 2/3 truncation rule
+#define alias_filter (15.0/32.0)*2.0			// De-alias using the 15/32 rule (Weirong's thesis)
 #define k_fil 24.0								// High-pass filter cutoff for initial condition
-#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/tempjetinv02_6H_0R2_Re2200_filter24/"
+#define pert_amp 0.02
+#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/temporal-jet/"
+#define sim_name "pert%0.2f_%dH_Re%d_nx%d_ny%d_nz%d_lx%dpi_ly%dpi_lz%dpi_dt%.3f_1532filter/",(double)pert_amp,(int)(LY/H),(int)Re,NX,NY,NZ,(int)(LX/PI),(int)(LY/PI),(int)(LZ/PI),(double)dt
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
 #define RAD 1
 
@@ -163,16 +166,16 @@
 #define n_stats 20		// Number of timesteps to take between calculating stats data
 #define dt 0.01 	// Timestep
 #define nt 1000		// Total number of timesteps to take in the simulation
-#define Re 400
+#define Re 200
 #define nu (1.0/Re)
 #define Sc 0.7
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 // #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation (from Weirong's thesis)
-#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/taylor-green/n256_re400/"
+#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/taylor-green/n256_2pi_re200/"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
 #define k_fil 0
 #define RAD 1
-#define H (PI/4.0)
+#define H (LY/6.0)
 #define theta (H/35.0)
 */
 

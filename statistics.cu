@@ -1492,7 +1492,7 @@ double calcSurfaceArea_mgpu(gpudata gpu, cufftDoubleReal **f, cufftDoubleReal **
 }
 
 __global__
-void calcVrmsKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *RMS, double *KE){
+void calcVrmsKernel_mgpu(int start_y, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *RMS, double *KE){
 // Function to calculate the RMS velocity of a flow field
 
 	// Declare variables
@@ -1567,7 +1567,7 @@ void calcVrms(gpudata gpu, griddata grid, fielddata vel, statistics *stats)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].Vrms, &stats[n].KE);
+		calcVrmsKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].Vrms, &stats[n].KE);
 
   }
   
@@ -1585,7 +1585,7 @@ void calcVrms(gpudata gpu, griddata grid, fielddata vel, statistics *stats)
 }
 
 __global__
-void calcEpsilonKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *eps){
+void calcEpsilonKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *eps){
 // Function to calculate the rate of dissipation of kinetic energy in a flow field
 
 	// Declare variables
@@ -1594,7 +1594,8 @@ void calcEpsilonKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if ((i >= NX) || ((j+start_y) >= NY) || (k >= NZ)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if ((i >= NX) || (jj >= NY) || (k >= NZ)) return;
 	int kp = NZ-k;
 	const int idx = flatten(j, i, k, NY, NX, NZ2);
 	const int idx2 = flatten(j, i, kp, NY, NX, NZ2);
@@ -1608,6 +1609,8 @@ void calcEpsilonKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat
 	const int s_row = threadIdx.y;
 	const int s_sta = threadIdx.z;
 	const int s_idx = flatten(s_row, s_col, s_sta, s_h, s_w, s_d);
+	
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
 
 // Step 1: Calculate k_sq*velocity magnitude at each point in the domain
 	// Requires calculation of uu*, or multiplication of u with its complex conjugate
@@ -1615,10 +1618,10 @@ void calcEpsilonKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat
 	// uu* = (a + ib) * (a - ib) = a^2 + b^2.
 	// Some funky indexing is required because only half of the domain is represented in the complex form
 	if (k < NZ2){
-		vel_mag[s_idx] = (wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k] )*( (u1hat[idx].x*u1hat[idx].x + u1hat[idx].y*u1hat[idx].y)/((double)NN*NN) + (u2hat[idx].x*u2hat[idx].x + u2hat[idx].y*u2hat[idx].y)/((double)NN*NN) + (u3hat[idx].x*u3hat[idx].x + u3hat[idx].y*u3hat[idx].y)/((double)NN*NN) );
+		vel_mag[s_idx] = (k_sq)*( (u1hat[idx].x*u1hat[idx].x + u1hat[idx].y*u1hat[idx].y)/((double)NN*NN) + (u2hat[idx].x*u2hat[idx].x + u2hat[idx].y*u2hat[idx].y)/((double)NN*NN) + (u3hat[idx].x*u3hat[idx].x + u3hat[idx].y*u3hat[idx].y)/((double)NN*NN) );
 	}
 	else{
-		vel_mag[s_idx] = (wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k] )*( (u1hat[idx2].x*u1hat[idx2].x + u1hat[idx2].y*u1hat[idx2].y)/((double)NN*NN) + (u2hat[idx2].x*u2hat[idx2].x + u2hat[idx2].y*u2hat[idx2].y)/((double)NN*NN) + (u3hat[idx2].x*u3hat[idx2].x + u3hat[idx2].y*u3hat[idx2].y)/((double)NN*NN) );
+		vel_mag[s_idx] = (k_sq)*( (u1hat[idx2].x*u1hat[idx2].x + u1hat[idx2].y*u1hat[idx2].y)/((double)NN*NN) + (u2hat[idx2].x*u2hat[idx2].x + u2hat[idx2].y*u2hat[idx2].y)/((double)NN*NN) + (u3hat[idx2].x*u3hat[idx2].x + u3hat[idx2].y*u3hat[idx2].y)/((double)NN*NN) );
 	}
 
 	__syncthreads();
@@ -1652,7 +1655,7 @@ void calcDissipationRate(gpudata gpu, griddata grid, fielddata vel, statistics *
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].epsilon);
+		calcEpsilonKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].epsilon);
 
   }
   
@@ -1666,7 +1669,7 @@ void calcDissipationRate(gpudata gpu, griddata grid, fielddata vel, statistics *
 }
 
 __global__
-void calcIntegralLengthKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *l){
+void calcIntegralLengthKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *l){
 // Function to calculate the integral length scale of a turbulent flow field
 
 	// Declare variables
@@ -1675,7 +1678,8 @@ void calcIntegralLengthKernel_mgpu(int start_y, double *wave, cufftDoubleComplex
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if ((i >= NX) || ((j+start_y) >= NY) || (k >= NZ)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if ((i >= NX) || (jj >= NY) || (k >= NZ)) return;
 	int kp = NZ-k;
 	const int idx = flatten(j, i, k, NY, NX, NZ2);
 	const int idx2 = flatten(j, i, kp, NY, NX, NZ2);
@@ -1689,6 +1693,8 @@ void calcIntegralLengthKernel_mgpu(int start_y, double *wave, cufftDoubleComplex
 	const int s_row = threadIdx.y;
 	const int s_sta = threadIdx.z;
 	const int s_idx = flatten(s_row, s_col, s_sta, s_h, s_w, s_d);
+	
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
 
 // Step 1: Calculate velocity magnitude at each point in the domain
 	// Requires calculation of uu*, or multiplication of u with its complex conjugate
@@ -1696,12 +1702,12 @@ void calcIntegralLengthKernel_mgpu(int start_y, double *wave, cufftDoubleComplex
 	// uu* = (a + ib) * (a - ib) = a^2 + b^2.
 	// Some funky indexing is required because only half of the domain is represented in the complex form
 	vel_mag[s_idx] = 0.0;
-	if (wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k] > 0){
+	if (k_sq > 0){
 		if (k < NZ2){
-			vel_mag[s_idx] = ( (u1hat[idx].x*u1hat[idx].x + u1hat[idx].y*u1hat[idx].y)/((double)NN*NN) + (u2hat[idx].x*u2hat[idx].x + u2hat[idx].y*u2hat[idx].y)/((double)NN*NN) + (u3hat[idx].x*u3hat[idx].x + u3hat[idx].y*u3hat[idx].y)/((double)NN*NN) )/( 2.0*sqrt(wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k]) );
+			vel_mag[s_idx] = ( (u1hat[idx].x*u1hat[idx].x + u1hat[idx].y*u1hat[idx].y)/((double)NN*NN) + (u2hat[idx].x*u2hat[idx].x + u2hat[idx].y*u2hat[idx].y)/((double)NN*NN) + (u3hat[idx].x*u3hat[idx].x + u3hat[idx].y*u3hat[idx].y)/((double)NN*NN) )/( 2.0*sqrt(k_sq) );
 		}
 		else{
-			vel_mag[s_idx] = ( (u1hat[idx2].x*u1hat[idx2].x + u1hat[idx2].y*u1hat[idx2].y)/((double)NN*NN) + (u2hat[idx2].x*u2hat[idx2].x + u2hat[idx2].y*u2hat[idx2].y)/((double)NN*NN) + (u3hat[idx2].x*u3hat[idx2].x + u3hat[idx2].y*u3hat[idx2].y)/((double)NN*NN) )/( 2.0*sqrt(wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k]) );
+			vel_mag[s_idx] = ( (u1hat[idx2].x*u1hat[idx2].x + u1hat[idx2].y*u1hat[idx2].y)/((double)NN*NN) + (u2hat[idx2].x*u2hat[idx2].x + u2hat[idx2].y*u2hat[idx2].y)/((double)NN*NN) + (u3hat[idx2].x*u3hat[idx2].x + u3hat[idx2].y*u3hat[idx2].y)/((double)NN*NN) )/( 2.0*sqrt(k_sq) );
 		}
 	}
 
@@ -1737,7 +1743,7 @@ void calcIntegralLength(gpudata gpu, griddata grid, fielddata vel, statistics *s
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].l);
+		calcIntegralLengthKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.uh[n], vel.vh[n], vel.wh[n], &stats[n].l);
 
   }
   
@@ -1750,7 +1756,7 @@ void calcIntegralLength(gpudata gpu, griddata grid, fielddata vel, statistics *s
 }
 
 __global__
-void calcScalarDissipationKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *zhat, double *chi){
+void calcScalarDissipationKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *zhat, double *chi){
 // Function to calculate the RMS velocity of a flow field
 
 	// Declare variables
@@ -1759,7 +1765,8 @@ void calcScalarDissipationKernel_mgpu(int start_y, double *wave, cufftDoubleComp
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if ((i >= NX) || ( (j+start_y) >= NY) || (k >= NZ)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if ((i >= NX) || (jj >= NY) || (k >= NZ)) return;
 	int kp = NZ-k;
 	const int idx = flatten(j, i, k, NY, NX, NZ2);
 	const int idx2 = flatten(j, i, kp, NY, NX, NZ2);
@@ -1773,6 +1780,8 @@ void calcScalarDissipationKernel_mgpu(int start_y, double *wave, cufftDoubleComp
 	const int s_row = threadIdx.y;
 	const int s_sta = threadIdx.z;
 	const int s_idx = flatten(s_row, s_col, s_sta, s_h, s_w, s_d);
+	
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
 
 // Step 1: Calculate velocity magnitude at each point in the domain
 	// Requires calculation of uu*, or multiplication of u with its complex conjugate
@@ -1781,10 +1790,10 @@ void calcScalarDissipationKernel_mgpu(int start_y, double *wave, cufftDoubleComp
 	// Some funky indexing is required because only half of the domain is represented in the complex form
 	// (or is it? Can potentially just compute on the standard grid and multiply by 2....)
 	if (k < NZ2){
-		sca_mag[s_idx] = (wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k] )*(zhat[idx].x*zhat[idx].x + zhat[idx].y*zhat[idx].y)/((double)NN*NN);
+		sca_mag[s_idx] = (k_sq)*(zhat[idx].x*zhat[idx].x + zhat[idx].y*zhat[idx].y)/((double)NN*NN);
 	}
 	else{
-		sca_mag[s_idx] = (wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k] )*(zhat[idx2].x*zhat[idx2].x + zhat[idx2].y*zhat[idx2].y)/((double)NN*NN);
+		sca_mag[s_idx] = (k_sq)*(zhat[idx2].x*zhat[idx2].x + zhat[idx2].y*zhat[idx2].y)/((double)NN*NN);
 	}
 
 	__syncthreads();
@@ -1823,7 +1832,7 @@ void calcScalarDissipationRate(gpudata gpu, griddata grid, fielddata vel, statis
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ, TZ));
 		const size_t smemSize = TX*TY*TZ*sizeof(double);
 		
-		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], vel.sh[n], &stats[n].chi);
+		calcScalarDissipationKernel_mgpu<<<gridSize, blockSize, smemSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.sh[n], &stats[n].chi);
 
   }
   
@@ -1836,7 +1845,7 @@ void calcScalarDissipationRate(gpudata gpu, griddata grid, fielddata vel, statis
 }
 
 __global__
-void calcEnergySpectraKernel_mgpu(int start_y, double *wave, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *e){
+void calcEnergySpectraKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, double *e){
 // Function to calculate the integral length scale of a turbulent flow field
 
 	// Declare variables
@@ -1845,7 +1854,8 @@ void calcEnergySpectraKernel_mgpu(int start_y, double *wave, cufftDoubleComplex 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if ((i >= NX) || ((j+start_y) >= NY) || (k >= NZ)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if ((i >= NX) || (jj >= NY) || (k >= NZ)) return;
 	int kp = NZ-k;
 	const int idx = flatten(j, i, k, NY, NX, NZ2);
 	const int idx2 = flatten(j, i, kp, NY, NX, NZ2);
@@ -1859,6 +1869,8 @@ void calcEnergySpectraKernel_mgpu(int start_y, double *wave, cufftDoubleComplex 
 	const int s_row = threadIdx.y;
 	const int s_sta = threadIdx.z;
 	const int s_idx = flatten(s_row, s_col, s_sta, s_h, s_w, s_d);
+	
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
 
 // Step 1: Calculate velocity magnitude at each point in the domain
 	// Requires calculation of uu*, or multiplication of u with its complex conjugate
@@ -1868,10 +1880,10 @@ void calcEnergySpectraKernel_mgpu(int start_y, double *wave, cufftDoubleComplex 
 	vel_mag[s_idx] = 0.0;
 	// if (wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k] > 0){
 		if (k < NZ2){
-			vel_mag[s_idx] = ( (u1hat[idx].x*u1hat[idx].x + u1hat[idx].y*u1hat[idx].y)/((double)NN*NN) + (u2hat[idx].x*u2hat[idx].x + u2hat[idx].y*u2hat[idx].y)/((double)NN*NN) + (u3hat[idx].x*u3hat[idx].x + u3hat[idx].y*u3hat[idx].y)/((double)NN*NN) )/( 2.0*sqrt(wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k]) );
+			vel_mag[s_idx] = ( (u1hat[idx].x*u1hat[idx].x + u1hat[idx].y*u1hat[idx].y)/((double)NN*NN) + (u2hat[idx].x*u2hat[idx].x + u2hat[idx].y*u2hat[idx].y)/((double)NN*NN) + (u3hat[idx].x*u3hat[idx].x + u3hat[idx].y*u3hat[idx].y)/((double)NN*NN) )/( 2.0*sqrt(k_sq) );
 		}
 		else{
-			vel_mag[s_idx] = ( (u1hat[idx2].x*u1hat[idx2].x + u1hat[idx2].y*u1hat[idx2].y)/((double)NN*NN) + (u2hat[idx2].x*u2hat[idx2].x + u2hat[idx2].y*u2hat[idx2].y)/((double)NN*NN) + (u3hat[idx2].x*u3hat[idx2].x + u3hat[idx2].y*u3hat[idx2].y)/((double)NN*NN) )/( 2.0*sqrt(wave[i]*wave[i] + wave[(j+start_y)]*wave[(j+start_y)] + wave[k]*wave[k]) );
+			vel_mag[s_idx] = ( (u1hat[idx2].x*u1hat[idx2].x + u1hat[idx2].y*u1hat[idx2].y)/((double)NN*NN) + (u2hat[idx2].x*u2hat[idx2].x + u2hat[idx2].y*u2hat[idx2].y)/((double)NN*NN) + (u3hat[idx2].x*u3hat[idx2].x + u3hat[idx2].y*u3hat[idx2].y)/((double)NN*NN) )/( 2.0*sqrt(k_sq) );
 		}
 	// }
 
@@ -2028,7 +2040,7 @@ void calcTurbStats_mgpu(const int c, gpudata gpu, fftdata fft, griddata grid, fi
 {// Function to call a cuda kernel that calculates the relevant turbulent statistics
 
 	// Synchronize GPUs before calculating statistics
-	int i, n, nGPUs;
+	int n, nGPUs;
 	//double Wiso[]={0.0001,0.002,0.005,0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1.0,2.0,5.0,10.0,20.0,50.0,100.0};
 	//double Ziso[]={0.001,0.002,0.005,0.01,0.02,0.03,0.04,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6};
 

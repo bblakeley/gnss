@@ -45,7 +45,7 @@ void organizeData_coalesced(cufftDoubleComplex *in, cufftDoubleComplex *out, int
 }
 
 __global__ 
-void organizeData_2d(cufftDoubleComplex *in, cufftDoubleComplex *out, int N, int j)
+void organizeData_2d_xy(cufftDoubleComplex *in, cufftDoubleComplex *out, int N, int j)
 {// Function to grab non-contiguous chunks of data and make them contiguous
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -74,11 +74,52 @@ void transpose_xy_mgpu(gpudata gpu, cufftDoubleComplex **src, cufftDoubleComplex
       const dim3 blockSize(TX, TZ, 1);
 		  const dim3 gridSize(divUp(NX, TX), divUp(NZ2, TZ), 1);
 		  // Open kernel that grabs all data 
-		  organizeData_2d<<<gridSize,blockSize>>>(src[n], temp[n], gpu.nx[n], j);
+		  organizeData_2d_xy<<<gridSize,blockSize>>>(src[n], temp[n], gpu.nx[n], j);
 			
 			local_idx_dst = gpu.start_x[n]*NZ2 + (j - gpu.start_y[dstNum])*NZ2*NX;
 
 			checkCudaErrors( cudaMemcpyAsync(&dst[dstNum][local_idx_dst], temp[n], sizeof( cufftDoubleComplex )*NZ2*gpu.nx[n], cudaMemcpyDefault) );
+		}
+	}
+
+	return;
+}
+
+__global__ 
+void organizeData_2d_yx(cufftDoubleComplex *in, cufftDoubleComplex *out, int N, int i)
+{// Function to grab non-contiguous chunks of data and make them contiguous
+
+	const int j = blockIdx.x * blockDim.x + threadIdx.x;
+	const int k = blockIdx.y * blockDim.y + threadIdx.y;
+	if(j >= N || k >= NZ2) return;
+
+	out[k + j*NZ2] = in[k + NZ2*i + j*NX*NZ2];
+
+	return;
+}
+
+void transpose_yx_mgpu(gpudata gpu, cufftDoubleComplex **src, cufftDoubleComplex **dst, cufftDoubleComplex **temp)
+{   // Transpose x and y directions (for a z-contiguous 1d array distributed across multiple GPUs)
+	// This function loops through GPUs to do the transpose. Requires extra conversion to calculate the local index at the source location.
+	// printf("Taking Transpose...\n");
+
+	int n, i, local_idx_dst, dstNum;
+
+	for(i=0; i<NX; ++i){
+		for(n=0; n<gpu.nGPUs; ++n){
+			cudaSetDevice(n); 
+
+			// Determine which GPU to send data to based on y-index, j
+			dstNum = (i*gpu.nGPUs)/NX;
+
+      const dim3 blockSize(TX, TZ, 1);
+		  const dim3 gridSize(divUp(NY, TX), divUp(NZ2, TZ), 1);
+		  // Open kernel that grabs all data 
+		  organizeData_2d_yx<<<gridSize,blockSize>>>(src[n], temp[n], gpu.ny[n], i);
+			
+			local_idx_dst = gpu.start_y[n]*NZ2 + (i - gpu.start_x[dstNum])*NZ2*NY;
+
+			checkCudaErrors( cudaMemcpyAsync(&dst[dstNum][local_idx_dst], temp[n], sizeof( cufftDoubleComplex )*NZ2*gpu.ny[n], cudaMemcpyDefault) );
 		}
 	}
 
@@ -261,7 +302,7 @@ void forwardTransform(fftdata fft, gpudata gpu, cufftDoubleReal **f )
 	}
 
 	// Transpose X and Y dimensions
-	transpose_xy_mgpu(gpu, (cufftDoubleComplex **)f, fft.temp, fft.temp_reorder);
+	transpose_xy_mgpu(gpu, (cufftDoubleComplex **)f, fft.temp, fft.temp_reorder_f);
 
 	// Take FFT in X direction (which has been transposed to what used to be the Y dimension)
 	for(n = 0; n<gpu.nGPUs; ++n){
@@ -292,7 +333,7 @@ void inverseTransform(fftdata fft, gpudata gpu, cufftDoubleComplex **f)
 	}
 
 	// Transpose X and Y directions
-	transpose_xy_mgpu(gpu, fft.temp, f, fft.temp_reorder);
+	transpose_yx_mgpu(gpu, fft.temp, f, fft.temp_reorder_i);
 
 	for(n = 0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);

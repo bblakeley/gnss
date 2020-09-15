@@ -15,18 +15,25 @@
 #include "struct_def.h"
 
 __global__
-void deAliasKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *fhat){
+void deAliasKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *fhat){
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
-	double k_sq = waveNum[i]*waveNum[i] + waveNum[(j+start_y)]*waveNum[(j+start_y)] + waveNum[k]*waveNum[k];
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
+	
+	double kx_max = NX*PI/LX;
+	
+	double k_max = alias_filter*kx_max;
+	//double ky_max = alias_filter*PI*NY/LY;
+	//double kz_max = alias_filter*PI*NZ/LZ;
+	//double k_max = kx_max*kx_max; // + ky_max*ky_max + kz_max*kz_max;
 
-	if( k_sq > (k_max*k_max) )
-	{
+	if( k_sq > k_max*k_max ){
 		fhat[idx].x = 0.0;
 		fhat[idx].y = 0.0;
 	}
@@ -46,56 +53,59 @@ void deAlias(gpudata gpu, griddata grid, fielddata vel)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call the kernel
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.uh[n]);
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.vh[n]);
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.wh[n]);
-		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], vel.sh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.uh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.vh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.wh[n]);
+		deAliasKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.sh[n]);
 	}
 	
 	return;
 }
 
 __global__
-void calcOmega1Kernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, cufftDoubleComplex *omega1){
+void calcOmega1Kernel_mgpu(int start_y, double *k2, double *k3, cufftDoubleComplex *u2hat, cufftDoubleComplex *u3hat, cufftDoubleComplex *omega1){
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if ((i >= NX) || ((j + start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if ((i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
-	omega1[idx].x = -waveNum[(j + start_y)]*u3hat[idx].y + waveNum[k]*u2hat[idx].y;
-	omega1[idx].y = waveNum[(j + start_y)]*u3hat[idx].x - waveNum[k]*u2hat[idx].x;
+	omega1[idx].x = -k2[jj]*u3hat[idx].y + k3[k]*u2hat[idx].y;
+	omega1[idx].y = k2[jj]*u3hat[idx].x - k3[k]*u2hat[idx].x;
 
 	return;
 }
 
 __global__
-void calcOmega2Kernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *u1hat, cufftDoubleComplex *u3hat, cufftDoubleComplex *omega2){
+void calcOmega2Kernel_mgpu(int start_y, double *k1, double *k3, cufftDoubleComplex *u1hat, cufftDoubleComplex *u3hat, cufftDoubleComplex *omega2){
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if ((i >= NX) || ((j + start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if ((i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
-	omega2[idx].x = waveNum[i]*u3hat[idx].y - waveNum[k]*u1hat[idx].y;
-	omega2[idx].y = -waveNum[i]*u3hat[idx].x + waveNum[k]*u1hat[idx].x;
+	omega2[idx].x = k1[i]*u3hat[idx].y - k3[k]*u1hat[idx].y;
+	omega2[idx].y = -k1[i]*u3hat[idx].x + k3[k]*u1hat[idx].x;
 
 	return;
 }
 
 __global__
-void calcOmega3Kernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *omega3){
+void calcOmega3Kernel_mgpu(int start_y, double *k1, double *k2, cufftDoubleComplex *u1hat, cufftDoubleComplex *u2hat, cufftDoubleComplex *omega3){
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if ((i >= NX) || ((j + start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if ((i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
-	omega3[idx].x = -waveNum[i]*u2hat[idx].y + waveNum[(j + start_y)]*u1hat[idx].y;
-	omega3[idx].y = waveNum[i]*u2hat[idx].x - waveNum[(j + start_y)]*u1hat[idx].x;
+	omega3[idx].x = -k1[i]*u2hat[idx].y + k2[jj]*u1hat[idx].y;
+	omega3[idx].y = k1[i]*u2hat[idx].x - k2[jj]*u1hat[idx].x;
 
 	return;
 }
@@ -112,9 +122,9 @@ void vorticity(gpudata gpu, griddata grid, fielddata vel, fielddata rhs){
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call kernels to calculate vorticity
-		calcOmega1Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], vel.vh[n], vel.wh[n], rhs.uh[n]);
-		calcOmega2Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], vel.uh[n], vel.wh[n], rhs.vh[n]);
-		calcOmega3Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], vel.uh[n], vel.vh[n], rhs.wh[n]);
+		calcOmega1Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.ky[n], grid.kz[n], vel.vh[n], vel.wh[n], rhs.uh[n]);
+		calcOmega2Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], grid.kz[n], vel.uh[n], vel.wh[n], rhs.vh[n]);
+		calcOmega3Kernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], grid.ky[n], vel.uh[n], vel.vh[n], rhs.wh[n]);
 		// Kernel calls include scaling for post-FFT
 	}
 
@@ -129,7 +139,8 @@ void crossProductKernel_mgpu(int start_x, cufftDoubleReal *u1, cufftDoubleReal *
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (((i + start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
+	const int ii = i + start_x;  // Absolute index for referencing wavenumbers
+	if ((ii >= NX) || (j >= NY) || (k >= NZ)) return;
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
 
 	// Load values into register memory (would be overwritten if not loaded into memory)
@@ -171,27 +182,28 @@ void crossProduct(gpudata gpu, fielddata vel, fielddata rhs){
 }
 
 __global__
-void multIkKernel_mgpu(const int dir, int start_y, double *waveNum, cufftDoubleComplex *f, cufftDoubleComplex *fIk)
+void multIkKernel_mgpu(const int dir, int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *f, cufftDoubleComplex *fIk)
 {   // Multiples an input array by ik 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
 	if(dir == 1){
-		fIk[idx].x = -waveNum[i]*f[idx].y;
-		fIk[idx].y = waveNum[i]*f[idx].x;
+		fIk[idx].x = -k1[i]*f[idx].y;
+		fIk[idx].y = k1[i]*f[idx].x;
 	}
 
 	if(dir == 2){
-		fIk[idx].x = -waveNum[j+start_y]*f[idx].y;
-		fIk[idx].y = waveNum[j+start_y]*f[idx].x;
+		fIk[idx].x = -k2[jj]*f[idx].y;
+		fIk[idx].y = k2[jj]*f[idx].x;
 	}
 
 	if(dir == 3){
-		fIk[idx].x = -waveNum[k]*f[idx].y;
-		fIk[idx].y = waveNum[k]*f[idx].x;
+		fIk[idx].x = -k3[k]*f[idx].y;
+		fIk[idx].y = k3[k]*f[idx].x;
 	}
 
 	return;
@@ -209,32 +221,33 @@ void takeDerivative(int dir, gpudata gpu, griddata grid, cufftDoubleComplex **f,
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Take derivative (dir = 1 => x-direction, 2 => y-direction, 3 => z-direction)
-		multIkKernel_mgpu<<<gridSize, blockSize>>>(dir, gpu.start_y[n],  grid.kx[n], f[n], fIk[n]);
+		multIkKernel_mgpu<<<gridSize, blockSize>>>(dir, gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], f[n], fIk[n]);
 	}
 
 	return;  
 }
 
 __global__
-void gradientKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *f, cufftDoubleComplex *f_x, cufftDoubleComplex *f_y, cufftDoubleComplex *f_z)
+void gradientKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *f, cufftDoubleComplex *f_x, cufftDoubleComplex *f_y, cufftDoubleComplex *f_z)
 {   // Multiples an input array by ik 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
   // x-direction
-	f_x[idx].x = -waveNum[i]*f[idx].y;
-	f_x[idx].y = waveNum[i]*f[idx].x;
+	f_x[idx].x = -k1[i]*f[idx].y;
+	f_x[idx].y = k1[i]*f[idx].x;
 
   // y-direction
-	f_y[idx].x = -waveNum[j+start_y]*f[idx].y; 
-	f_y[idx].y = waveNum[j+start_y]*f[idx].x;
+	f_y[idx].x = -k2[jj]*f[idx].y; 
+	f_y[idx].y = k2[jj]*f[idx].x;
 
   // z-direction
-	f_z[idx].x = -waveNum[k]*f[idx].y; 
-	f_z[idx].y = waveNum[k]*f[idx].x;
+	f_z[idx].x = -k3[k]*f[idx].y; 
+	f_z[idx].y = k3[k]*f[idx].x;
 
 	return;
 }
@@ -251,24 +264,25 @@ void gradient(gpudata gpu, griddata grid, cufftDoubleComplex **f, fielddata grad
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Take gradient
-		gradientKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], f[n], grad.uh[n], grad.vh[n], grad.wh[n]);
+		gradientKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], f[n], grad.uh[n], grad.vh[n], grad.wh[n]);
 	}
 
 	return;  
 }
 
 __global__
-void divergenceKernel_mgpu(int start_y, double *waveNum, cufftDoubleComplex *f_x, cufftDoubleComplex *f_y, cufftDoubleComplex *f_z, cufftDoubleComplex *result)
+void divergenceKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *f_x, cufftDoubleComplex *f_y, cufftDoubleComplex *f_z, cufftDoubleComplex *result)
 {   // Multiples an input array by ik 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
   // i*kx*f_x + i*ky*f_y + i*kz*f_z
-	result[idx].x = -waveNum[i]*f_x[idx].y - waveNum[j+start_y]*f_y[idx].y - waveNum[k]*f_z[idx].y; 
-	result[idx].y = waveNum[i]*f_x[idx].x + waveNum[j+start_y]*f_y[idx].x + waveNum[k]*f_z[idx].x ;
+	result[idx].x = -k1[i]*f_x[idx].y - k2[jj]*f_y[idx].y - k3[k]*f_z[idx].y; 
+	result[idx].y = k1[i]*f_x[idx].x + k2[jj]*f_y[idx].x + k3[k]*f_z[idx].x ;
 
 	return;
 }
@@ -285,7 +299,7 @@ void divergence(gpudata gpu, griddata grid, fielddata f, cufftDoubleComplex **re
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Take divergence
-		divergenceKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], f.uh[n], f.vh[n], f.wh[n], result[n]);
+		divergenceKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], f.uh[n], f.vh[n], f.wh[n], result[n]);
 	}
 
 	return;  
@@ -298,7 +312,8 @@ void multAndAddKernel_mgpu(int start_x, cufftDoubleReal *f1, cufftDoubleReal *f2
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (((i + start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
+	const int ii = i + start_x;  // Absolute index for referencing wavenumbers
+	if ((ii >= NX) || (j >= NY) || (k >= NZ)) return;
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
 
 	f3[idx] = f3[idx] + f1[idx] * f2[idx];
@@ -331,7 +346,8 @@ void dotKernel_mgpu(int start_x, cufftDoubleReal *a1, cufftDoubleReal *a2, cufft
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (((i + start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
+	const int ii = i + start_x;  // Absolute index for referencing wavenumbers
+	if ((ii >= NX) || (j >= NY) || (k >= NZ)) return;
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
 
   result[idx] = a1[idx]*b1[idx] + a2[idx]*b2[idx] + a3[idx]*b3[idx];
@@ -350,7 +366,6 @@ void dotProduct( gpudata gpu, fielddata a, fielddata b, cufftDoubleReal **result
 		const dim3 blockSize(TX, TY, TZ);
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
-		// Take derivative (dir = 1 => x-direction, 2 => y-direction, 3 => z-direction)
 		dotKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], a.u[n], a.v[n], a.w[n], b.u[n], b.v[n], b.w[n], result[n]);
 	}
 
@@ -389,12 +404,13 @@ void scalarAdvection(fftdata fft, gpudata gpu, griddata grid, fielddata vel, fie
 }
 
 __global__
-void computeRHSKernel_mgpu(int start_y, double *k1, cufftDoubleComplex *rhs_u1, cufftDoubleComplex *rhs_u2, cufftDoubleComplex *rhs_u3, cufftDoubleComplex *rhs_Z)
+void computeRHSKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *rhs_u1, cufftDoubleComplex *rhs_u2, cufftDoubleComplex *rhs_u3, cufftDoubleComplex *rhs_Z)
 {
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
 	// if(i == 0 && j == 0 && k ==0){printf("Calling computeRHS kernel\n");}
@@ -410,10 +426,10 @@ void computeRHSKernel_mgpu(int start_y, double *k1, cufftDoubleComplex *rhs_u1, 
 	double temp3_c = rhs_u3[idx].y;
 
 	// Calculate k^2 for each index
-	double k_sq = k1[i]*k1[i] + k1[(j+start_y)]*k1[(j+start_y)] + k1[k]*k1[k];
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
 
 	// Form RHS
-	if( i == 0 && (j+start_y) == 0 && k == 0){
+	if( i == 0 && jj == 0 && k == 0){
 		rhs_u1[idx].x = 0.0;
 		rhs_u1[idx].y = 0.0;
 
@@ -427,14 +443,14 @@ void computeRHSKernel_mgpu(int start_y, double *k1, cufftDoubleComplex *rhs_u1, 
 		rhs_Z[idx].y = 0.0;
 	}
 	else {
-		rhs_u1[idx].x = (k1[i]*k1[i] / k_sq - 1.0)*temp1_r + (k1[i]*k1[(j+start_y)] / k_sq)*temp2_r + (k1[i]*k1[k] / k_sq)*temp3_r;
-		rhs_u1[idx].y = (k1[i]*k1[i] / k_sq - 1.0)*temp1_c + (k1[i]*k1[(j+start_y)] / k_sq)*temp2_c + (k1[i]*k1[k] / k_sq)*temp3_c;
+		rhs_u1[idx].x = (k1[i]*k1[i] / k_sq - 1.0)*temp1_r + (k1[i]*k2[jj] / k_sq)*temp2_r + (k1[i]*k3[k] / k_sq)*temp3_r;
+		rhs_u1[idx].y = (k1[i]*k1[i] / k_sq - 1.0)*temp1_c + (k1[i]*k2[jj] / k_sq)*temp2_c + (k1[i]*k3[k] / k_sq)*temp3_c;
 
-		rhs_u2[idx].x = (k1[(j+start_y)]*k1[i] / k_sq)*temp1_r + (k1[(j+start_y)]*k1[(j+start_y)] / k_sq - 1.0)*temp2_r + (k1[(j+start_y)]*k1[k] / k_sq)*temp3_r;
-		rhs_u2[idx].y = (k1[(j+start_y)]*k1[i] / k_sq)*temp1_c + (k1[(j+start_y)]*k1[(j+start_y)] / k_sq - 1.0)*temp2_c + (k1[(j+start_y)]*k1[k] / k_sq)*temp3_c;
+		rhs_u2[idx].x = (k2[jj]*k1[i] / k_sq)*temp1_r + (k2[jj]*k2[jj] / k_sq - 1.0)*temp2_r + (k2[jj]*k3[k] / k_sq)*temp3_r;
+		rhs_u2[idx].y = (k2[jj]*k1[i] / k_sq)*temp1_c + (k2[jj]*k2[jj] / k_sq - 1.0)*temp2_c + (k2[jj]*k3[k] / k_sq)*temp3_c;
 
-		rhs_u3[idx].x = (k1[k]*k1[i] / k_sq)*temp1_r + (k1[k]*k1[(j+start_y)] / k_sq)*temp2_r + (k1[k]*k1[k] / k_sq - 1.0)*temp3_r;
-		rhs_u3[idx].y = (k1[k]*k1[i] / k_sq)*temp1_c + (k1[k]*k1[(j+start_y)] / k_sq)*temp2_c + (k1[k]*k1[k] / k_sq - 1.0)*temp3_c;
+		rhs_u3[idx].x = (k3[k]*k1[i] / k_sq)*temp1_r + (k3[k]*k2[jj] / k_sq)*temp2_r + (k3[k]*k3[k] / k_sq - 1.0)*temp3_r;
+		rhs_u3[idx].y = (k3[k]*k1[i] / k_sq)*temp1_c + (k3[k]*k2[jj] / k_sq)*temp2_c + (k3[k]*k3[k] / k_sq - 1.0)*temp3_c;
 
 		rhs_Z[idx].x = -rhs_Z[idx].x;
 		rhs_Z[idx].y = -rhs_Z[idx].y;
@@ -455,7 +471,7 @@ void makeRHS(gpudata gpu, griddata grid, fielddata rhs)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call the kernel
-		computeRHSKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n],  grid.kx[n], rhs.uh[n], rhs.vh[n], rhs.wh[n], rhs.sh[n]);
+		computeRHSKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], rhs.uh[n], rhs.vh[n], rhs.wh[n], rhs.sh[n]);
 		cudaError_t err = cudaGetLastError();
 		if (err != cudaSuccess) 
 	    printf("Error: %s\n", cudaGetErrorString(err));	
@@ -468,16 +484,17 @@ void makeRHS(gpudata gpu, griddata grid, fielddata rhs)
 
 
 __global__
-void eulerKernel_mgpu(double num, int start_y, double *waveNum, cufftDoubleComplex *fhat,  cufftDoubleComplex *rhs_f)
+void eulerKernel_mgpu(double num, int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *fhat,  cufftDoubleComplex *rhs_f)
 {
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
 	// Calculate k^2 for each index
-	double k_sq = waveNum[i]*waveNum[i] + waveNum[(j+start_y)]*waveNum[(j+start_y)] + waveNum[k]*waveNum[k];
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
 
 	// Timestep in X-direction
 	fhat[idx].x = ( (1.0 - dt/2.0*k_sq/num)*fhat[idx].x + dt * rhs_f[idx].x ) / (1.0 + dt/2.0*k_sq/num);
@@ -487,16 +504,17 @@ void eulerKernel_mgpu(double num, int start_y, double *waveNum, cufftDoubleCompl
 }
 
 __global__
-void adamsBashforthKernel_mgpu(double num, int start_y, double *waveNum, cufftDoubleComplex *fhat, cufftDoubleComplex *rhs_f, cufftDoubleComplex *rhs_f_old)
+void adamsBashforthKernel_mgpu(double num, int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *fhat, cufftDoubleComplex *rhs_f, cufftDoubleComplex *rhs_f_old)
 {
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
 	// Calculate k^2 for each index
-	double k_sq = waveNum[i]*waveNum[i] + waveNum[(j+start_y)]*waveNum[(j+start_y)] + waveNum[k]*waveNum[k];
+	double k_sq = k1[i]*k1[i] + k2[jj]*k2[jj] + k3[k]*k3[k];
 
 	// Timestep in X-direction
 	fhat[idx].x = ( (1.0 - dt/2.0*k_sq/num)*fhat[idx].x + dt * (1.5*rhs_f[idx].x - 0.5*rhs_f_old[idx].x) ) / (1.0 + dt/2.0*k_sq/num);
@@ -517,17 +535,17 @@ void timestep(const int flag, gpudata gpu, griddata grid, fielddata vel, fieldda
 
 		if(flag){
 			// printf("Using Euler Method\n");
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.uh[n], rhs.uh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.vh[n], rhs.vh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.wh[n], rhs.wh[n]);
-			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.sh[n], rhs.sh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.uh[n], rhs.uh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.vh[n], rhs.vh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.wh[n], rhs.wh[n]);
+			eulerKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.sh[n], rhs.sh[n]);
 		}
 		else {
 			// printf("Using A-B Method\n");
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.uh[n], rhs.uh[n], rhs_old.uh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.vh[n], rhs.vh[n], rhs_old.vh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re,    gpu.start_y[n], grid.kx[n], vel.wh[n], rhs.wh[n], rhs_old.wh[n]);
-			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double) Re*Sc, gpu.start_y[n], grid.kx[n], vel.sh[n], rhs.sh[n], rhs_old.sh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double)Re, gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.uh[n], rhs.uh[n], rhs_old.uh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double)Re, gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.vh[n], rhs.vh[n], rhs_old.vh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double)Re, gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.wh[n], rhs.wh[n], rhs_old.wh[n]);
+			adamsBashforthKernel_mgpu<<<gridSize, blockSize>>>((double)Re*Sc, gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.sh[n], rhs.sh[n], rhs_old.sh[n]);
 		}
 	}
 
@@ -540,7 +558,8 @@ void updateKernel_mgpu(int start_y, cufftDoubleComplex *rhs_f, cufftDoubleComple
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (( i >= NX) || ((j+start_y) >= NY) || (k >= NZ2)) return;
+	const int jj = j + start_y;  // Absolute index for referencing wavenumbers
+	if (( i >= NX) || (jj >= NY) || (k >= NZ2)) return;
 	const int idx = flatten( j, i, k, NY, NX, NZ2);
 
 	// Update old variables to store current iteration
@@ -580,7 +599,8 @@ void scalarFilterkernel_mgpu(int start_x, cufftDoubleReal *f)
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
 	const int k = blockIdx.z * blockDim.z + threadIdx.z;
-	if (((i + start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
+	const int ii = i + start_x;  // Absolute index for referencing wavenumbers
+	if ((ii >= NX) || (j >= NY) || (k >= NZ)) return;
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);
 
 	// Check is value is greater than 1 or less than 0

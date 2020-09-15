@@ -79,12 +79,16 @@ void printIterTime(int c, double steptime)
 // Write to file
 //============================================================================================
 
+//void make_name(
+
 void writeYprofs(const int c, const char* name, double *data)
 {
-  char title[0x100];
+  char title [256];
 	FILE *out;
+	char folder [256];
 	
-	snprintf(title, sizeof(title), "%sYprofs/%s.%i", rootdir, name, c);
+	snprintf(folder, sizeof(folder), sim_name);
+	snprintf(title, sizeof(title), "%s%sYprofs/%s.%i", rootdir, folder, name, c);
 	printf("Writing data to %s \n", title);
 	out = fopen(title, "wb");
 	
@@ -98,10 +102,12 @@ void writeYprofs(const int c, const char* name, double *data)
 void saveYprofs(const int c, profile data)
 { // Save mean profs to file
   struct stat st = {0};
-  char title[0x100];
-  
+  char title[256];
+  char folder [256];
+	
+	snprintf(folder, sizeof(folder), sim_name);
 	if(c==0){  // Create directory for statistics if one doesn't already exist
-	  snprintf(title, sizeof(title), "%s%s", rootdir, "Yprofs/");
+	  snprintf(title, sizeof(title), "%s%s%s", rootdir, folder, "Yprofs/");
     if (stat(title, &st) == -1) {  
       mkdir(title, 0700);
     }
@@ -122,10 +128,12 @@ void writeDouble(double v, FILE *f)  {
 }
 
 void writeStats(const int c, const char* name, double in) {
-	char title[0x100];
+	char title[256];
 	FILE *out;
+	char folder [256];
 	
-	snprintf(title, sizeof(title), "%sstats/%s", rootdir, name);
+	snprintf(folder, sizeof(folder), sim_name);	
+	snprintf(title, sizeof(title), "%s%sstats/%s", rootdir, folder, name);
 	//printf("Writing data to %s \n", title);
 	if(c==0){ // First timestep, create new file
 	  out = fopen(title, "wb");
@@ -142,11 +150,12 @@ void writeStats(const int c, const char* name, double in) {
 void saveStatsData(const int c, statistics stats)
 {
   struct stat st = {0};
-  char title[0x100];
-  int i;
-  
+  char title[256];
+	char folder [256];
+	
+	snprintf(folder, sizeof(folder), sim_name);  
 	if(c==0){  // Create directory for statistics if one doesn't already exist
-	  snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
+	  snprintf(title, sizeof(title), "%s%s%s", rootdir, folder, "stats/");
     if (stat(title, &st) == -1) {  
       mkdir(title, 0700);
     }
@@ -171,7 +180,7 @@ void saveStatsData(const int c, statistics stats)
 	//  writeStats(1, "area_omega" , stats.area_omega[i]);
 	//}
 	
-  snprintf(title, sizeof(title), "%s%s", rootdir, "stats/");
+  snprintf(title, sizeof(title), "%s%s%s", rootdir, folder, "stats/");
 	printf("Statistics data written to %s \n", title);
 
 	return;
@@ -180,9 +189,11 @@ void saveStatsData(const int c, statistics stats)
 void writexyfields( gpudata gpu, const int iter, const char var, double **in, const int zplane ) 
 {
 	int i, j, n, idx;
-	char title[0x100];
-
-	snprintf(title, sizeof(title), "%svis/%c%s.%i", rootdir, var, "_xy", iter);
+	char title[256];
+	char folder [256];
+	
+	snprintf(folder, sizeof(folder), sim_name);
+	snprintf(title, sizeof(title), "%s%svis/%c%s.%i", rootdir, folder, var, "_xy", iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NX*NY, out);
@@ -203,9 +214,11 @@ void writexyfields( gpudata gpu, const int iter, const char var, double **in, co
 void writexzfields( gpudata gpu, const int iter, const char var, double **in, const int yplane ) 
 {
 	int i, k, n, idx;
-	char title[0x100];
+	char title[256];
+	char folder [256];
 	
-	snprintf(title, sizeof(title), "%svis/%c%s.%i", rootdir, var, "_xz", iter);
+	snprintf(folder, sizeof(folder), sim_name);	
+	snprintf(title, sizeof(title), "%s%svis/%c%s.%i", rootdir, folder, var, "_xz", iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NX*NZ, out);
@@ -226,9 +239,11 @@ void writexzfields( gpudata gpu, const int iter, const char var, double **in, co
 void writeyzfields( gpudata gpu, const int iter, const char var, double **in, const int xplane ) 
 {
 	int j, k, n, idx;
-	char title[0x100];
-
-	snprintf(title, sizeof(title), "%svis/%c%s.%i", rootdir, var, "_yz", iter);
+	char title[256];
+	char folder [256];
+	
+	snprintf(folder, sizeof(folder), sim_name);
+	snprintf(title, sizeof(title), "%s%svis/%c%s.%i", rootdir, folder, var, "_yz", iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NY*NZ, out);
@@ -249,11 +264,13 @@ void writeyzfields( gpudata gpu, const int iter, const char var, double **in, co
 void save2Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata vel)
 {
 	int n;
-	char title[0x100];
+	char title[256];
 	struct stat st = {0};
-
+	char folder [256];
+	
+	snprintf(folder, sizeof(folder), sim_name);
 	if(c==0){ // Create new directory for visualization data if one doesn't already exist
-	  snprintf(title, sizeof(title), "%s%s", rootdir, "vis/");
+	  snprintf(title, sizeof(title), "%s%s%s", rootdir, folder, "vis/");
     if (stat(title, &st) == -1) {
       mkdir(title, 0700);
     }
@@ -308,9 +325,11 @@ void save2Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 void write3Dfields_mgpu(gpudata gpu, const int iter, const char var, double **in ) 
 {
 	int i, j, k, n, idx;
-	char title[0x100];
-
-	snprintf(title, sizeof(title), "%s%c.%i", rootdir, var, iter);
+	char title[256];
+	char folder [256];
+	
+	snprintf(folder, sizeof(folder), sim_name);
+	snprintf(title, sizeof(title), "%s%s%c.%i", rootdir, folder, var, iter);
 	printf("Saving data to %s \n", title);
 	FILE *out = fopen(title, "wb");
 	writeDouble(sizeof(double) * NX*NY*NZ, out);
@@ -337,11 +356,15 @@ void write3Dfields_mgpu(gpudata gpu, const int iter, const char var, double **in
 void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata vel){
 	int n;
 	struct stat st = {0};
-
+	char title [256];
+	char folder [256];
+	
+	snprintf(folder, sizeof(folder), sim_name);
+	snprintf(title, sizeof(title), "%s%s", rootdir, folder);
 	if(c==0){
 	
-    if (stat(rootdir, &st) == -1) {  // Create root directory for DNS data if one doesn't already exist
-      mkdir(rootdir, 0700);
+    if (stat(title, &st) == -1) {  // Create root directory for DNS data if one doesn't already exist
+      mkdir(title, 0700);
     }
 	
 		printf("Saving initial data...\n");
@@ -429,7 +452,7 @@ void loadData(gpudata gpu, const char *name, double **var)
 { // Function to read in velocity data into multiple GPUs
 
 	int i, j, k, n, idx, N;
-	char title[0x100];
+	char title[256];
 	
 	snprintf(title, sizeof(title), DataLocation, name);
 	printf("Importing data from %s \n", title);
