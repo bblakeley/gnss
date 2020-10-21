@@ -55,12 +55,12 @@ void allocate_memory(){
 	cudaHostAlloc((void**)&grid.ky, nGPUs*sizeof(double *), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&grid.kz, nGPUs*sizeof(double *), cudaHostAllocMapped);
 
-	// Allocate memory on host
+	// Allocate memory on host	
 	cudaHostAlloc((void**)&h_vel, sizeof(fielddata), cudaHostAllocMapped);
-	h_vel.u = (double **)malloc(sizeof(double *)*nGPUs);
-	h_vel.v = (double **)malloc(sizeof(double *)*nGPUs);
-	h_vel.w = (double **)malloc(sizeof(double *)*nGPUs);
-	h_vel.s = (double **)malloc(sizeof(double *)*nGPUs);
+	h_vel.uh = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
+	h_vel.vh = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
+	h_vel.wh = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
+	h_vel.sh = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
 
   cudaHostAlloc((void**)&vel, sizeof(fielddata), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&vel.uh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
@@ -93,11 +93,11 @@ void allocate_memory(){
 	// Allocate memory for arrays on each GPU
 	for (n = 0; n<nGPUs; ++n){
 		cudaSetDevice(n);
-
-		h_vel.u[n] = (double *)malloc(sizeof(complex double)*gpu.nx[n]*NY*NZ2);
-		h_vel.v[n] = (double *)malloc(sizeof(complex double)*gpu.nx[n]*NY*NZ2);
-		h_vel.w[n] = (double *)malloc(sizeof(complex double)*gpu.nx[n]*NY*NZ2);
-		h_vel.s[n] = (double *)malloc(sizeof(complex double)*gpu.nx[n]*NY*NZ2);
+    
+		h_vel.uh[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
+		h_vel.vh[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
+		h_vel.wh[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
+		h_vel.sh[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
 
 		checkCudaErrors( cudaMalloc((void **)&grid.kx[n], sizeof(double)*NX ) );
 		checkCudaErrors( cudaMalloc((void **)&grid.ky[n], sizeof(double)*NY ) );
@@ -141,6 +141,11 @@ void allocate_memory(){
 	}
 
 		// Cast pointers to complex arrays to real array and store in the proper struct field
+		h_vel.u = (cufftDoubleReal **)h_vel.uh;
+		h_vel.v = (cufftDoubleReal **)h_vel.vh;
+		h_vel.w = (cufftDoubleReal **)h_vel.wh;
+		h_vel.s = (cufftDoubleReal **)h_vel.sh;
+		
 		vel.u = (cufftDoubleReal **)vel.uh;
 		vel.v = (cufftDoubleReal **)vel.vh;
 		vel.w = (cufftDoubleReal **)vel.wh;

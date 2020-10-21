@@ -311,86 +311,250 @@ double max_value(double **array, gpudata gpu)
     return max_val;
 }
 
+void random_normal(double *val, double mu, double sigma){
+// function to generate a pair of random variables with a normal distribution of mean mu and std dev. sigma
+  double A,B;
+  
+  val[0] = (double)rand()/RAND_MAX;   // Generate uniform random variable between 0 and 1
+  val[1] = (double)rand()/RAND_MAX;
+  
+  A = sigma*sqrt(-2.0*log(val[0] ));
+  B = 2.0*PI*val[1];
+  
+  val[0] = A*cos(B) + mu;
+  val[1] = A*sin(B) + mu;
+
+  return;
+}
+
 // Generate random, solenoidal velocity fields
 void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs)
 {
-	int n,i,j,k,idx;
-	double max_val;
+	int n,i,j,jj,k,idx,idx_g,nbins,bin;
+	double kxmax,kymax,kzmax,kmax,dkx,dky,dkz,dk,ksq,sigma,pertrms,pertband,pertpeak,ke,rms;
+	double val[2];
+	double *energy,*kvec,*kx,*ky,*kz;
+	int *S;
+	cufftDoubleComplex *A1,*A2,*A3;
 	
-	// Generate 3 random fields
-	for (n = 0; n<gpu.nGPUs; ++n){
-	  srand(n);
-	  for (i=0; i<gpu.nx[n]; ++i){
-	    for (j=0; j<NY; ++j){
-	      for (k=0; k<NZ; ++k){
-	        idx = k + j*2*NZ2 + i*2*NZ2*NY;
-	        h_vel.u[n][idx] = (double)rand()/RAND_MAX*2.0-1.0;
-	        h_vel.v[n][idx] = (double)rand()/RAND_MAX*2.0-1.0;
-	        h_vel.w[n][idx] = (double)rand()/RAND_MAX*2.0-1.0;
+	// Set up wavespace
+	dkx = 2.0*PI/LX;
+	dky = 2.0*PI/LY;
+	dkz = 2.0*PI/LZ;
+	kxmax = (NX/2-1)*dkx;
+	kymax = (NY/2-1)*dky;
+	kzmax = (NZ/2-1)*dkz;
+	kmax = kxmax;
+	if(kymax < kmax) kmax = kymax;
+	if(kzmax < kmax) kmax = kzmax;
+	dk = dkx;
+	if(dky > dk) dk=dky;
+	if(dkz > dk) dk=dkz;
+	nbins = (int)(kmax/dk + 1);
+	printf("kmax = %2.4f, dk = %2.4f, nbins=%d\n",kmax,dk,nbins);
+	
+	// Allocate arrays
+	kx = (double *)malloc(sizeof(double)*NX);
+	ky = (double *)malloc(sizeof(double)*NY);
+	kz = (double *)malloc(sizeof(double)*NZ);
+	kvec = (double *)malloc(sizeof(double)*nbins);
+	energy = (double *)malloc(sizeof(double)*nbins);
+	S = (int *)malloc(sizeof(int)*nbins);
+	for (i=0; i<nbins; ++i) S[i] = 0;
+	
+	// Grab copies of wavenumbers
+	checkCudaErrors( cudaMemcpyAsync(kx, grid.kx[0], sizeof(double)*NX, cudaMemcpyDefault) );
+	checkCudaErrors( cudaMemcpyAsync(ky, grid.ky[0], sizeof(double)*NY, cudaMemcpyDefault) );
+	checkCudaErrors( cudaMemcpyAsync(kz, grid.kz[0], sizeof(double)*NZ, cudaMemcpyDefault) );
+	
+	// Set energy spectrum	
+	pertpeak = 2.0;
+	pertband = 6.0;
+	pertrms = 1.0;
+	// Assign energy to wavenumber bins
+	for(i = 0; i<nbins; ++i){
+	  kvec[i] = i*dk;
+	  double num = kvec[i]-pertpeak*dk;
+	  double den = 2.0*pertband*dk;
+	  energy[i] = exp(-num*num/(den*den));
+	  //printf("kvec = %2.4f, energy = %2.4f\n",kvec[i],energy[i]);
+	}
+	
+	// Scale kinetic energy and check result
+	ke = 0.0;
+	for(i = 0; i<nbins; ++i){
+	  ke = ke + energy[i];
+	}
+	rms = sqrt(2.0*ke/3.0);
+	
+	ke = 0.0;
+	for(i = 0; i<nbins; ++i){
+	  energy[i] = energy[i]*(pertrms*pertrms)/(rms*rms);
+	  ke = ke + energy[i];
+	  printf("Energy in bin #%d = %2.4f\n",i,energy[i]);
+	}
+	rms = sqrt(2.0*ke/3.0);
+	printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,rms);
+		
+	// Count number of modes in each bin
+	for (i=0; i<NX; ++i){
+	  for (j=0; j<NY; ++j){
+	    for (k=0; k<NZ2; ++k){
+	      ksq = sqrt( kx[i]*kx[i] + ky[j]*ky[j] + kz[k]*kz[k] );
+	      if(ksq < kmax){
+	        bin = (int)(ksq/dk+0.5);
+	        S[bin] = S[bin] + 1;
+	        //printf("For ksq = %2.4f, bin = %d\n",ksq,bin);
 	      }
 	    }
 	  }
 	}
 	
+	for(i = 0; i<nbins; ++i){
+	  printf("Number of modes in bin #%d = %d\n",i,S[i]);
+	}
+	
+	// Allocate temporary arrays to hold random values
+	A1 = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*NX*NY*NZ2);
+	A2 = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*NX*NY*NZ2);
+	A3 = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*NX*NY*NZ2);
+
+	
+	// Assign complex amplitudes and phases based on energy spectrum
+  for(i=0; i<NX; i++){
+    for(j=0; j<NY; j++){
+      for(k=0; k<NZ2; k++){
+        idx = k + i*NZ2 + j*NX*NZ2;
+        ksq = sqrt( kx[i]*kx[i] + ky[j]*ky[j] + kz[k]*kz[k] );
+        if(ksq < kmax){
+          bin = (int)(ksq/dk+0.5);
+          sigma = sqrt( energy[bin]/(2.0*S[bin]*ksq*ksq) );
+	          
+          random_normal(val,0.0,sigma);
+          A1[idx].x = -val[1];
+          A1[idx].y = val[0];
+	          
+          random_normal(val,0.0,sigma);
+          A2[idx].x = -val[1];
+          A2[idx].y = val[0];
+	          
+          random_normal(val,0.0,sigma);
+          A3[idx].x = -val[1];
+          A3[idx].y = val[0];
+        }
+        if(i==0 && j==0 && k==0){
+          A1[idx].x = 0.0;
+          A1[idx].y = 0.0;
+          A2[idx].x = 0.0;
+          A2[idx].y = 0.0;
+          A3[idx].x = 0.0;
+          A3[idx].y = 0.0;
+        }
+      }
+    }
+  }
+
+	// Take cross product to get incompressible velocity field
+  for(i=0; i<NX; i++){
+    for(j=0; j<NY; j++){
+      for(k=0; k<NZ2; k++){
+        idx = k + i*NZ2 + j*NX*NZ2;
+        double a1x = A1[idx].x;
+        double a1y = A1[idx].y;
+        double a2x = A2[idx].x;
+        double a2y = A2[idx].y;
+        double a3x = A3[idx].x;
+        double a3y = A3[idx].y;
+        A1[idx].x = -( ky[j]*a3y - kz[k]*a2y );
+        A1[idx].y =    ky[j]*a3x - kz[k]*a2y;
+	        
+        A2[idx].x = -( kz[k]*a1y - kx[i]*a3y );
+        A2[idx].y =    kz[k]*a1x - kx[i]*a3x;
+	        
+        A3[idx].x = -( kx[i]*a2y - ky[j]*a1y );
+        A3[idx].y =    ky[i]*a2x - ky[j]*a1x;
+      }
+    }
+  }
+
+  // Check energy spectrum	
+  for(i = 0; i<nbins; ++i){
+	  energy[i] = 0.0;
+	}
+	
+  for(i=0; i<NX; i++){
+    for(j=0; j<NY; j++){
+      for(k=0; k<NZ2; k++){
+        idx = k + i*NZ2 + j*NX*NZ2;
+        ksq = sqrt( kx[i]*kx[i] + ky[j]*ky[j] + kz[k]*kz[k] );
+        if(ksq < kmax){
+          bin = (int)(ksq/dk+0.5);
+          energy[bin] = energy[bin] + abs( A1[idx].x*A1[idx].y) + abs(A2[idx].x*A2[idx].y) + abs(A3[idx].x*A3[idx].y );
+        }
+      }
+    }
+  }
+
+
+	//Enforce conjugate symmetry
+	//for(i=0; i<NX; i++){
+	//  for(j=0; j<NY; j++){
+	    
+	ke = 0.0;
+	for(i = 0; i<nbins; ++i){
+	  ke = ke + energy[i];
+	  printf("Energy in bin #%d = %2.4f\n",i,energy[i]);
+	}
+	printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,sqrt(2.0*ke/3.0));
+	    
+	// Translate temporary global storage to GPU storage
+	for(n=0; n<gpu.nGPUs; ++n){
+    for(i=0; i<NX; i++){
+      for(j=0; j<gpu.ny[n]; j++){
+        for(k=0; k<NZ2; k++){
+        jj = j + gpu.start_y[n];
+        idx = k + i*NZ2 + j*NX*NZ2;
+        idx_g = k + i*NZ2 + jj*NX*NZ2;
+        h_vel.uh[n][idx].x = A1[idx_g].x*NN;
+        h_vel.uh[n][idx].y = A1[idx_g].y*NN;
+        
+        h_vel.vh[n][idx].x = A2[idx_g].x*NN;
+        h_vel.vh[n][idx].y = A2[idx_g].y*NN;
+        
+        h_vel.wh[n][idx].x = A3[idx_g].x*NN;
+        h_vel.wh[n][idx].y = A3[idx_g].y*NN;
+        }
+      }
+    }
+  }
+          	
+	
+	
+	// Cleanup
+	free(kvec);
+	free(energy);
+	free(S);
+	free(kx);
+	free(ky);
+	free(kz);
+	
+	free(A1);
+	free(A2);
+	free(A3);
+
 	// Copy random field to GPU
   for(n=0; n<gpu.nGPUs; ++n){
 		cudaSetDevice(n);
 		cudaDeviceSynchronize();
-		checkCudaErrors( cudaMemcpyAsync(vel.u[n], h_vel.u[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		checkCudaErrors( cudaMemcpyAsync(vel.v[n], h_vel.v[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		checkCudaErrors( cudaMemcpyAsync(vel.w[n], h_vel.w[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		checkCudaErrors( cudaMemcpyAsync(rhs.uh[n], h_vel.uh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		checkCudaErrors( cudaMemcpyAsync(rhs.vh[n], h_vel.vh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
+		checkCudaErrors( cudaMemcpyAsync(rhs.wh[n], h_vel.wh[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 	}
 	
-	// Transform random field to Fourier space
-	forwardTransform(fft, gpu, vel.u);
-	forwardTransform(fft, gpu, vel.v);
-	forwardTransform(fft, gpu, vel.w);
-	
-	// Take curl of random scalar field, stored in rhs
-	vorticity(gpu, grid, vel, rhs);
-	
-	// Remove highest wavenumber modes from random noise
-	deAlias(gpu, grid, rhs);
-		
 	// Transform from Fourier Space to physical space for normalization
 	inverseTransform(fft, gpu, rhs.uh);
 	inverseTransform(fft, gpu, rhs.vh);
 	inverseTransform(fft, gpu, rhs.wh);
-  
-  // Copy to host for normalization
-  for(n=0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n);
-		cudaDeviceSynchronize();
-		checkCudaErrors( cudaMemcpyAsync(h_vel.u[n], rhs.u[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		checkCudaErrors( cudaMemcpyAsync(h_vel.v[n], rhs.v[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		checkCudaErrors( cudaMemcpyAsync(h_vel.w[n], rhs.w[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-	}
-	
-  // Find maximum value in array to normalize against
-  max_val = max_value(h_vel.u, gpu);
-	
-	// Normalize curl of random fields to 1,-1
-	for (n = 0; n<gpu.nGPUs; ++n){
-	  for (i=0; i<gpu.nx[n]; ++i){
-	    for (j=0; j<NY; ++j){
-	      for (k=0; k<NZ; ++k){
-	        idx = k + j*2*NZ2 + i*2*NZ2*NY;
-	        h_vel.u[n][idx] = h_vel.u[n][idx]/max_val;
-	        h_vel.v[n][idx] = h_vel.v[n][idx]/max_val;
-	        h_vel.w[n][idx] = h_vel.w[n][idx]/max_val;
-	      }
-	    }
-	  }
-	}	
-
-	// Copy random, solenoidal random field normalized to [1,-1] to GPU
-  for(n=0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n);
-		cudaDeviceSynchronize();
-		checkCudaErrors( cudaMemcpyAsync(rhs.u[n], h_vel.u[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		checkCudaErrors( cudaMemcpyAsync(rhs.v[n], h_vel.v[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-		checkCudaErrors( cudaMemcpyAsync(rhs.w[n], h_vel.w[n], sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
-	}
 	
 	return;
 }

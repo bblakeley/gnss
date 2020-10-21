@@ -11,6 +11,7 @@ statistics *stats;
 profile Yprof;      // X,Z averaged profiles of important variables
 
 // Wavenumber vector
+griddata h_grid;
 griddata grid;
 
 // Velocity and scalar fields
