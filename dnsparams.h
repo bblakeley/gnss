@@ -21,7 +21,7 @@
 #define n_vis 50	// Number of timesteps to take between saving 2D slices of field data
 #define n_stats 50		// Number of timesteps to take between calculating stats data
 #define dt .002 	// Timestep
-#define nt 1000		// Total number of timesteps to take in the simulation
+#define nt 15000		// Total number of timesteps to take in the simulation
 #define H (LY/6.0)
 #define theta (H/35.0)
 #define Re 3200.0
@@ -32,7 +32,7 @@
 //#define alias_filter (2.0/3.0)			// De-alias using the 2/3 truncation rule
 #define alias_filter (15.0/32.0)*2.0			// De-alias using the 15/32 rule (Weirong's thesis)
 #define k_fil 24.0								// High-pass filter cutoff for initial condition
-#define pert_amp 0.02
+#define pert_amp 0.01
 #define rootdir "/home/bblakeley/Documents/Research/GNSS/test/"
 //#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/temporal-jet/"
 //#define sim_name "isotropic_spectral_initialization_test_nu%1.4f_Sc%1.2f_nx%d_ny%d_nz%d_lx%dpi_ly%dpi_lz%dpi_dt%.3f_1532filter/",nu,(double)Sc,NX,NY,NZ,(int)(LX/PI),(int)(LY/PI),(int)(LZ/PI),(double)dt

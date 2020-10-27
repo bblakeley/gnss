@@ -330,7 +330,7 @@ void random_normal(double *val, double mu, double sigma){
 // Generate random, solenoidal velocity fields
 void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs)
 {
-	int n,i,j,jj,k,idx,idx_g,nbins,bin;
+	int n,i,j,jj,k,idx,idx_g,idxp,nbins,bin;
 	double kxmax,kymax,kzmax,kmax,dkx,dky,dkz,dk,ksq,sigma,pertrms,pertband,pertpeak,ke,rms;
 	double val[2];
 	double *energy,*kvec,*kx,*ky,*kz;
@@ -368,8 +368,8 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
 	checkCudaErrors( cudaMemcpyAsync(kz, grid.kz[0], sizeof(double)*NZ, cudaMemcpyDefault) );
 	
 	// Set energy spectrum	
-	pertpeak = 2.0;
-	pertband = 6.0;
+	pertpeak = 6.0;
+	pertband = 20.0;
 	pertrms = 1.0;
 	// Assign energy to wavenumber bins
 	for(i = 0; i<nbins; ++i){
@@ -391,7 +391,7 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
 	for(i = 0; i<nbins; ++i){
 	  energy[i] = energy[i]*(pertrms*pertrms)/(rms*rms);
 	  ke = ke + energy[i];
-	  printf("Energy in bin #%d = %2.4f\n",i,energy[i]);
+	  //printf("Energy in bin #%d = %2.4f\n",i,energy[i]);
 	}
 	rms = sqrt(2.0*ke/3.0);
 	printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,rms);
@@ -409,22 +409,24 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
 	    }
 	  }
 	}
-	
+/*	
 	for(i = 0; i<nbins; ++i){
 	  printf("Number of modes in bin #%d = %d\n",i,S[i]);
 	}
-	
+*/	
 	// Allocate temporary arrays to hold random values
 	A1 = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*NX*NY*NZ2);
 	A2 = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*NX*NY*NZ2);
 	A3 = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*NX*NY*NZ2);
 
+	// Initialize random seed
+	srand(666*37 + 37*13);
 	
 	// Assign complex amplitudes and phases based on energy spectrum
   for(i=0; i<NX; i++){
     for(j=0; j<NY; j++){
       for(k=0; k<NZ2; k++){
-        idx = k + i*NZ2 + j*NX*NZ2;
+        idx = k + i*NZ2 + j*NX*NZ2;     // Transposed coordinates because... FFTs
         ksq = sqrt( kx[i]*kx[i] + ky[j]*ky[j] + kz[k]*kz[k] );
         if(ksq < kmax){
           bin = (int)(ksq/dk+0.5);
@@ -453,30 +455,7 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
       }
     }
   }
-
-	// Take cross product to get incompressible velocity field
-  for(i=0; i<NX; i++){
-    for(j=0; j<NY; j++){
-      for(k=0; k<NZ2; k++){
-        idx = k + i*NZ2 + j*NX*NZ2;
-        double a1x = A1[idx].x;
-        double a1y = A1[idx].y;
-        double a2x = A2[idx].x;
-        double a2y = A2[idx].y;
-        double a3x = A3[idx].x;
-        double a3y = A3[idx].y;
-        A1[idx].x = -( ky[j]*a3y - kz[k]*a2y );
-        A1[idx].y =    ky[j]*a3x - kz[k]*a2y;
-	        
-        A2[idx].x = -( kz[k]*a1y - kx[i]*a3y );
-        A2[idx].y =    kz[k]*a1x - kx[i]*a3x;
-	        
-        A3[idx].x = -( kx[i]*a2y - ky[j]*a1y );
-        A3[idx].y =    ky[i]*a2x - ky[j]*a1x;
-      }
-    }
-  }
-
+/*
   // Check energy spectrum	
   for(i = 0; i<nbins; ++i){
 	  energy[i] = 0.0;
@@ -489,24 +468,129 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
         ksq = sqrt( kx[i]*kx[i] + ky[j]*ky[j] + kz[k]*kz[k] );
         if(ksq < kmax){
           bin = (int)(ksq/dk+0.5);
-          energy[bin] = energy[bin] + abs( A1[idx].x*A1[idx].y) + abs(A2[idx].x*A2[idx].y) + abs(A3[idx].x*A3[idx].y );
+          energy[bin] = energy[bin] + abs(A1[idx].x*A1[idx].y) + abs(A2[idx].x*A2[idx].y) + abs(A3[idx].x*A3[idx].y);
+        }
+      }
+    }
+  }
+	    
+	ke = 0.0;
+	for(i = 0; i<nbins; ++i){
+	  ke = ke + energy[i];
+	  printf("Pre-cross product, Energy in bin #%d = %2.4f\n",i,energy[i]);
+	}
+	printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,sqrt(2.0*ke/3.0));
+*/	  
+	// Take cross product to get incompressible velocity field
+  for(i=0; i<NX; i++){
+    for(j=0; j<NY; j++){
+      for(k=0; k<NZ2; k++){
+        idx = k + i*NZ2 + j*NX*NZ2;
+        double a1x = A1[idx].x;
+        double a1y = A1[idx].y;
+        double a2x = A2[idx].x;
+        double a2y = A2[idx].y;
+        double a3x = A3[idx].x;
+        double a3y = A3[idx].y;
+        A1[idx].x = -( ky[j]*a3y - kz[k]*a2y );
+        A1[idx].y =    ky[j]*a3x - kz[k]*a2x;
+	        
+        A2[idx].x = -( kz[k]*a1y - kx[i]*a3y );
+        A2[idx].y =    kz[k]*a1x - kx[i]*a3x;
+	        
+        A3[idx].x = -( kx[i]*a2y - ky[j]*a1y );
+        A3[idx].y =    kx[i]*a2x - ky[j]*a1x;
+      }
+    }
+  }
+
+	//Enforce conjugate symmetry
+	for(i=NX/2+1; i<NX; i++){
+	  for(j=NY/2+1; j<NY; j++){
+	    k = 0; // Plane of symmetry
+	    idx = k + i*NZ2 + j*NX*NZ2;
+	    idxp = k + (NX-i)*NZ2 + (NY-j)*NX*NZ2;
+	    //printf("i=%d, j=%d, kx = %2.2f, ky = %2.2f\n ip = %d, jp = %d, kx = %2.2f, ky=%2.2f\n",i,j,kx[i],ky[j],(NX-i),(NY-j),kx[(NX-i)],ky[(NY-j)]);
+	    A1[idx].x =  A1[idxp].x;
+	    A1[idx].y = -A1[idxp].y;
+	    A2[idx].x =  A2[idxp].x;
+	    A2[idx].y = -A2[idxp].y;
+	    A3[idx].x =  A3[idxp].x;
+	    A3[idx].y = -A3[idxp].y;
+	  }
+  }
+  
+	for(i=NX/2+1; i<NX; i++){
+	  for(j=1; j<NY/2; j++){
+	    k = 0; // Plane of symmetry
+	    idx = k + i*NZ2 + j*NX*NZ2;
+	    idxp = k + (NX-i)*NZ2 + (NY-j)*NX*NZ2;
+	    //printf("i=%d, j=%d, kx = %2.2f, ky = %2.2f\n ip = %d, jp = %d, kx = %2.2f, ky=%2.2f\n",i,j,kx[i],ky[j],(NX-i),(NY-j),kx[(NX-i)],ky[(NY-j)]);
+	    A1[idx].x =  A1[idxp].x;
+	    A1[idx].y = -A1[idxp].y;
+	    A2[idx].x =  A2[idxp].x;
+	    A2[idx].y = -A2[idxp].y;
+	    A3[idx].x =  A3[idxp].x;
+	    A3[idx].y = -A3[idxp].y;
+	  }
+  }
+  
+	for(i=NX/2+1; i<NX; i++){
+	  j = 0;
+    k = 0; // Plane of symmetry
+    idx = k + i*NZ2 + j*NX*NZ2;
+    idxp = k + (NX-i)*NZ2 + j*NX*NZ2;
+    //printf("i=%d, j=%d, kx = %2.2f, ky = %2.2f\n ip = %d, jp = %d, kx = %2.2f, ky=%2.2f\n",i,j,kx[i],ky[j],(NX-i),j,kx[(NX-i)],ky[j]);
+    A1[idx].x =  A1[idxp].x;
+    A1[idx].y = -A1[idxp].y;
+    A2[idx].x =  A2[idxp].x;
+    A2[idx].y = -A2[idxp].y;
+    A3[idx].x =  A3[idxp].x;
+    A3[idx].y = -A3[idxp].y;
+  }	  
+	for(j=NY/2+1; j<NY; j++){
+	  i = 0;
+    k = 0; // Plane of symmetry
+    idx = k + i*NZ2 + j*NX*NZ2;
+	  idxp = k + i*NZ2 + (NY-j)*NX*NZ2;
+    //printf("i=%d, j=%d, kx = %2.2f, ky = %2.2f\n ip = %d, jp = %d, kx = %2.2f, ky=%2.2f\n",i,j,kx[i],ky[j],i,(NY-j),kx[i],ky[(NY-j)]);
+    A1[idx].x =  A1[idxp].x;
+    A1[idx].y = -A1[idxp].y;
+    A2[idx].x =  A2[idxp].x;
+    A2[idx].y = -A2[idxp].y;
+    A3[idx].x =  A3[idxp].x;
+    A3[idx].y = -A3[idxp].y;
+  }	  
+  
+  
+printf("Made it here\n");
+  // Check energy spectrum	
+  for(i = 0; i<nbins; ++i){
+	  energy[i] = 0.0;
+	}
+	
+  for(i=0; i<NX; i++){
+    for(j=0; j<NY; j++){
+      for(k=0; k<NZ2; k++){
+        idx = k + i*NZ2 + j*NX*NZ2;
+        ksq = sqrt( kx[i]*kx[i] + ky[j]*ky[j] + kz[k]*kz[k] );
+        if(ksq < kmax){
+          bin = (int)(ksq+0.5)/dk;
+          energy[bin] = energy[bin] + abs(A1[idx].x*A1[idx].y) + abs(A2[idx].x*A2[idx].y) + abs(A3[idx].x*A3[idx].y);
         }
       }
     }
   }
 
-
-	//Enforce conjugate symmetry
-	//for(i=0; i<NX; i++){
-	//  for(j=0; j<NY; j++){
-	    
 	ke = 0.0;
 	for(i = 0; i<nbins; ++i){
 	  ke = ke + energy[i];
-	  printf("Energy in bin #%d = %2.4f\n",i,energy[i]);
+	  printf("Post cross-product, Energy in bin #%d = %2.4f\n",i,energy[i]);
 	}
 	printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,sqrt(2.0*ke/3.0));
-	    
+
+
+		    
 	// Translate temporary global storage to GPU storage
 	for(n=0; n<gpu.nGPUs; ++n){
     for(i=0; i<NX; i++){
@@ -515,7 +599,7 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
         jj = j + gpu.start_y[n];
         idx = k + i*NZ2 + j*NX*NZ2;
         idx_g = k + i*NZ2 + jj*NX*NZ2;
-        h_vel.uh[n][idx].x = A1[idx_g].x*NN;
+        h_vel.uh[n][idx].x = A1[idx_g].x*NN; // Scale by NN to counteract scaling in FFT
         h_vel.uh[n][idx].y = A1[idx_g].y*NN;
         
         h_vel.vh[n][idx].x = A2[idx_g].x*NN;
@@ -528,8 +612,6 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
     }
   }
           	
-	
-	
 	// Cleanup
 	free(kvec);
 	free(energy);
