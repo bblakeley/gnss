@@ -10,8 +10,6 @@ void initializeScalar(gpudata gpu, fielddata vel);
 
 void initializeWaveNumbers(gpudata gpu, griddata grid);
 
-void initializeJet_Superposition(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs);
-
 void initializeJet(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs);
 
 void initializeTaylorGreen(gpudata gpu, fielddata vel);

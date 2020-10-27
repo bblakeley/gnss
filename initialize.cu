@@ -60,7 +60,7 @@ void initializeTaylorGreen(gpudata gpu, fielddata vel)
 }
 
 __global__
-void hpFilterKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *fhat){
+void hpFilterKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftDoubleComplex *fhat, double k_fil){
 
 	const int i = blockIdx.x * blockDim.x + threadIdx.x;
 	const int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -82,6 +82,8 @@ void hpFilterKernel_mgpu(int start_y, double *k1, double *k2, double *k3, cufftD
 void hpFilter(gpudata gpu, fftdata fft, griddata grid, fielddata vel)
 {	// Filter out low wavenumbers
 
+  double k_fil = 0.0;       // default
+  
 	// Transform isotropic noise (stored in rhs_u) to Fourier Space
 	forwardTransform(fft, gpu, vel.u);
 	forwardTransform(fft, gpu, vel.v);
@@ -96,9 +98,9 @@ void hpFilter(gpudata gpu, fftdata fft, griddata grid, fielddata vel)
 		const dim3 gridSize(divUp(NX, TX), divUp(gpu.ny[n], TY), divUp(NZ2, TZ));
 
 		// Call the kernel
-		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.uh[n]);
-		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.vh[n]);
-		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.wh[n]);
+		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.uh[n],k_fil);
+		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.vh[n],k_fil);
+		hpFilterKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_y[n], grid.kx[n], grid.ky[n], grid.kz[n], vel.wh[n],k_fil);
 	}
 	
 	// Transform filtered noise back to physical space
@@ -255,38 +257,6 @@ void velocitySuperpositionKernel_mgpu(int start_x, cufftDoubleReal *u, cufftDoub
 	u[idx] = u[idx] + scale*noise_u[idx];
 	v[idx] = v[idx] + scale*noise_v[idx];
 	w[idx] = w[idx] + scale*noise_w[idx];
-
-	return;
-}
-
-// Adding isotropic velocity field only in shear layer of temporal jet
-void initializeJet_Superposition(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs)
-{
-	int n;
-
-	// Import isotropic velocity field
-	importData(gpu, h_vel, rhs);
-
-	// High-pass filter to remove lowest wavenumbers
-	hpFilter(gpu, fft, grid, rhs);
-
-	// Initialize smooth jet velocity field (hyperbolic tangent profile from da Silva and Pereira)
-	initializeVelocity(gpu, vel);
-
-	// Superimpose isotropic noise on top of jet velocity initialization
-	for (n = 0; n<gpu.nGPUs; ++n){
-		cudaSetDevice(n);
-
-		const dim3 blockSize(TX, TY, TZ);
-		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
-
-		velocitySuperpositionKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.u[n], vel.v[n], vel.w[n], rhs.u[n], rhs.v[n], rhs.w[n], 0.02);
-		printf("Superimposing Jet velocity profile with isotropic noise...\n");
-	}	
-
-	initializeScalar(gpu, vel);
-
-	synchronizeGPUs(gpu.nGPUs);
 
 	return;
 }
@@ -562,8 +532,6 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
     A3[idx].y = -A3[idxp].y;
   }	  
   
-  
-printf("Made it here\n");
   // Check energy spectrum	
   for(i = 0; i<nbins; ++i){
 	  energy[i] = 0.0;
@@ -585,7 +553,7 @@ printf("Made it here\n");
 	ke = 0.0;
 	for(i = 0; i<nbins; ++i){
 	  ke = ke + energy[i];
-	  printf("Post cross-product, Energy in bin #%d = %2.4f\n",i,energy[i]);
+	  //printf("Post cross-product, Energy in bin #%d = %2.4f\n",i,energy[i]);
 	}
 	printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,sqrt(2.0*ke/3.0));
 

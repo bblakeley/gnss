@@ -28,7 +28,7 @@
 #define nu (H/Re)
 //#define nu 0.005
 //#define Re (1.0/nu)
-#define Sc 1.0
+#define Sc 0.7
 //#define alias_filter (2.0/3.0)			// De-alias using the 2/3 truncation rule
 #define alias_filter (15.0/32.0)*2.0			// De-alias using the 15/32 rule (Weirong's thesis)
 #define k_fil 24.0								// High-pass filter cutoff for initial condition
@@ -63,7 +63,6 @@
 #define Re (1.0/nu)
 #define Sc 0.7
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
-#define k_fil 96.0								// High-pass filter cutoff for initial condition
 #define rootdir "/home/bblakeley/Documents/Research/GNSS/test/tempjetinv2_8H_0R4_Re3200_filter96/"
 #define DataLocation "/home/bblakeley/Documents/Research/Flamelet_Data/R4/%s.0"
 #define RAD 1
@@ -94,7 +93,6 @@
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
 #define H (PI/3.0)
 #define theta (H/35.0)
-#define k_fil 12.0
 #define RAD 1 // Radius of finite difference stencil for area calculations
 */
 /*
@@ -120,7 +118,6 @@
 // #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation (from Weirong's thesis)
 #define rootdir "/home/bblakeley/Documents/Research/DNS_Data/Isotropic/Test/R4_cuda_customworksize/"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R4/%s.0"
-#define k_fil 0
 #define RAD 1
 #define H (PI/4.0)
 #define theta (H/35.0)
@@ -148,7 +145,6 @@
 #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation (from Weirong's thesis)
 #define rootdir "/home/bblakeley/Documents/Research/DNS_Data/Isotropic/Test/R4_cuda_customworksize/"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R4/%s.0"
-#define k_fil 0
 #define RAD 1
 #define H (PI/4.0)
 #define theta (H/35.0)
@@ -177,7 +173,6 @@
 // #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation (from Weirong's thesis)
 #define rootdir "/home/bblakeley/Documents/Research/GNSS/test/taylor-green/n256_2pi_re200/"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
-#define k_fil 0
 #define RAD 1
 #define H (LY/6.0)
 #define theta (H/35.0)
@@ -209,7 +204,6 @@
 #define Re (1.0/nu)
 #define Sc 0.7
 #define k_max (2.0/3.0*(double)NX/2.0)                  // De-alias using the 2/3 truncation rule
-#define k_fil 20.0                                                              // High-pass filter cutoff for initial condition
 #define RAD 1	// stencil radius for surface area calculations
 #define rootdir "/home/bblakeley/Documents/GNSS/test/temporal-jet/inv02_6H_0R2_Re3200_filter20/"
 #define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R2/%s.0"
@@ -240,7 +234,6 @@
 //#define k_max ((double)NX/2.0)			// Only removing modes at corners of domain, no de-aliasing
 #define k_max (2.0/3.0*(double)NX/2.0)			// De-alias using the 2/3 truncation rule
 //#define k_max (15.0/32.0*(double)NX/2.0)			// De-alias using the 15/32 truncation rule
-#define k_fil 48.0					// High-pass filter cutoff for initial condition
 #define RAD 1
 #define rootdir "/home/bblakeley/Documents/GNSS/test/temporal-jet/inv02_8H_0R4_Re3200_Sc07_f48_dimensional/"
 #define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R4/%s.0"
@@ -271,7 +264,6 @@
 #define DataLocation "/home/bblakeley/Documents/Flamelet_Data/R2/%s.0"
 #define H (PI/3.0)
 #define theta (H/35.0)
-#define k_fil 12.0
 #define RAD 1 // Radius of finite difference stencil for area calculations
 */
 /*
@@ -298,7 +290,6 @@
 // #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation (from Weirong's thesis)
 #define rootdir "/home/bblakeley/Documents/DNS_Data/Isotropic/Test/R4_cuda_customworksize/"
 #define DataLocation "/home/bblakeley/Documents/DNS_Data/Flamelet_Data/R4/%s.0"
-#define k_fil 0
 #define RAD 1
 #define H (PI/4.0)
 #define theta (H/35.0)
@@ -328,7 +319,6 @@
 #define k_max ( 15.0/32.0*(double)NX )		// De-alias using 15/32 truncation (from Weirong's thesis)
 #define SaveLocation "/home/bblakeley/Documents/Research/DNS_Data/Isotropic/Test/R4_cuda_customworksize/%c.%i"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R4/%s.0"
-#define k_fil 0
 #define RAD 1
 #define H (PI/4.0)
 #define theta (H/35.0)
@@ -358,7 +348,6 @@
 #define SaveLocation "/home/bblakeley/Documents/Research/DNS_Data/GNSS/Test/TG/Re400/%c.%i"
 #define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
 #define StatsLocation "/home/bblakeley/Documents/Research/DNS_Data/GNSS/Test/TG/Re400/stats/%s"
-#define k_fil 0
 #define RAD 1
 #define H (PI/4.0)
 #define theta (H/35.0)
