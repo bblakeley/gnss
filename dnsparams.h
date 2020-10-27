@@ -24,14 +24,15 @@
 #define nt 15000		// Total number of timesteps to take in the simulation
 #define H (LY/6.0)
 #define theta (H/35.0)
+#define theta_s (H/35.0)
+#define theta_c (H/35.0)
 #define Re 3200.0
 #define nu (H/Re)
-//#define nu 0.005
-//#define Re (1.0/nu)
-#define Sc 0.7
-//#define alias_filter (2.0/3.0)			// De-alias using the 2/3 truncation rule
+#define Sc 0.7      // Schmidt number of salt
+#define Sc_c 1.4    // Schmidt number of colloid
+#define alpha 0.0033
+// #define alias_filter (2.0/3.0)			// De-alias using the 2/3 truncation rule
 #define alias_filter (15.0/32.0)*2.0			// De-alias using the 15/32 rule (Weirong's thesis)
-#define k_fil 24.0								// High-pass filter cutoff for initial condition
 #define pert_amp 0.01
 #define rootdir "/home/bblakeley/Documents/Research/GNSS/test/"
 //#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/temporal-jet/"
@@ -41,7 +42,7 @@
 #define RAD 1
 
 /*
-// Temporal Jet, following daSilva 2008, PoF
+// 512^3 Temporal Jet, following daSilva 2008, PoF
 #define NX 512
 #define NY 512
 #define NZ 512

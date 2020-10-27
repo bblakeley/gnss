@@ -25,7 +25,7 @@ typedef struct statistics{
 	double omega_x;           // Volume average of x-component of vorticity
 	double omega_y;           // Volume average of y-component of vorticity
 	double omega_z;           // Volume average of z-component of vorticity
-	double tmp;              // Temporary array used to store intermediate values during multi-gpu computations
+	double tmp;               // Temporary array used to store intermediate values during multi-gpu calcs
 }statistics;
 
 typedef struct fftdata{
@@ -46,13 +46,15 @@ typedef struct fielddata{
 	cufftDoubleReal **u;					// u component of velocity in physical space
 	cufftDoubleReal **v;					// v component of velocity in physical space
 	cufftDoubleReal **w;					// w component of velocity in physical space
-	cufftDoubleReal **s;					// scalar field in physical space
+	cufftDoubleReal **s;					// passive scalar field in physical space
+	cufftDoubleReal **c;					// scalar field with drift velocity in physical space
 	cufftDoubleComplex **uh;			// u_hat - u component of field in Fourier Space
 	cufftDoubleComplex **vh;			// v_hat - v component of field in Fourier Space
 	cufftDoubleComplex **wh;			// w_hat - w component of field in Fourier Space
-	cufftDoubleComplex **sh;			// s_hat - scalar field in Fourier Space
-	cufftDoubleReal **left;    // Halo data on left boundary
-	cufftDoubleReal **right;   // Halo data on right boundary 
+	cufftDoubleComplex **sh;			// s_hat - passive scalar field in Fourier Space
+	cufftDoubleComplex **ch;			// c_hat - scalar field with drift velocity in Fourier Space
+	cufftDoubleReal **left;       // Halo data on left boundary
+	cufftDoubleReal **right;      // Halo data on right boundary 
 }fielddata;
 
 typedef struct griddata{
@@ -83,6 +85,7 @@ typedef struct profile{
   double **vv;
   double **ww;
   double **ss;
+  double **c;
 }profile;
 
 #endif

@@ -166,28 +166,29 @@ void initializeScalarKernel_mgpu(int start_x, cufftDoubleReal *Z)
 	if (((i+start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
 	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);	// Index local to each GPU
 
-	// For mixing layer following daSilva and Pereira, 2007 PoF:
 	// Create physical vectors in temporary memory
-	// double x = -(double)LX/2 + (i + start_x)*(double)LX/NX ;
 	double y = -(double)LY/2 + j*(double)LY/NY;
-	// double z = -(double)LZ/2 + k*(double)NZ/NZ;
 
 	// Initialize scalar field
 	Z[idx] = 0.5 - 0.5*tanh( H/(4.0*theta)*( 2.0*fabs(y)/H - 1.0 ));
-	//Z[idx] = 0.5*H/(4.0*theta*2.0/H)*(1/cosh(H/(4.0*theta)*(2.0*fabs(y)/H - 1.0) ))*(1/cosh(H/(4.0*theta)*(2.0*fabs(y)/H-1.0) ));
-/*
-	// For mixing layer used in Blakeley et al., 2019 JoT
-  // Create physical vectors in temporary memory
-	double x = (i + start_x) * (double)LX / NX;
 
-	// Initialize starting array
-	if ( (i+start_x) < NX/2 ){
-		Z[idx] = 0.5 * (1 + tanh( (x - PI/2) * LX) );
-	}
-	else {
-		Z[idx] = 0.5 * (1 - tanh( (x - 3*PI/2) * LX) );
-	}
-*/
+	return;
+}
+
+__global__ 
+void initializeColloidKernel_mgpu(int start_x, cufftDoubleReal *C)
+{	// Creates initial conditions in the physical domain
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	const int j = blockIdx.y * blockDim.y + threadIdx.y;
+	const int k = blockIdx.z * blockDim.z + threadIdx.z;
+	if (((i+start_x) >= NX) || (j >= NY) || (k >= NZ)) return;
+	const int idx = flatten(i, j, k, NX, NY, 2*NZ2);	// Index local to each GPU
+
+	// Create physical vectors in temporary memory
+	double y = -(double)LY/2 + j*(double)LY/NY;
+
+	// Initialize scalar field
+	C[idx] = 0.5 - 0.5*tanh( H/(4.0*theta_c)*( 2.0*fabs(y)/H - 1.0 ));
 
 	return;
 }
@@ -202,6 +203,7 @@ void initializeScalar(gpudata gpu, fielddata vel)
 		const dim3 gridSize(divUp(gpu.nx[n], TX), divUp(NY, TY), divUp(NZ, TZ));
 
 		initializeScalarKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.s[n]);
+		initializeColloidKernel_mgpu<<<gridSize, blockSize>>>(gpu.start_x[n], vel.c[n]);
 		printf("Scalar field initialized on GPU #%d...\n",n);
 	}
 
