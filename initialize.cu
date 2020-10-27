@@ -366,7 +366,7 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
 	  //printf("Energy in bin #%d = %2.4f\n",i,energy[i]);
 	}
 	rms = sqrt(2.0*ke/3.0);
-	printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,rms);
+	//printf("Kinetic Energy = %2.4f, rms = %2.4f\n",ke,rms);
 		
 	// Count number of modes in each bin
 	for (i=0; i<NX; ++i){

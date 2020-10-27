@@ -79,8 +79,6 @@ void printIterTime(int c, double steptime)
 // Write to file
 //============================================================================================
 
-//void make_name(
-
 void writeYprofs(const int c, const char* name, double *data)
 {
   char title [256];
@@ -367,6 +365,7 @@ void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 	
 	snprintf(folder, sizeof(folder), sim_name);
 	snprintf(title, sizeof(title), "%s%s", rootdir, folder);
+	//printf("Saving data to %s\n",title);
 	if(c==0){
 	
     if (stat(title, &st) == -1) {  // Create root directory for DNS data if one doesn't already exist
@@ -382,7 +381,7 @@ void save3Dfields(int c, fftdata fft, gpudata gpu, fielddata h_vel, fielddata ve
 			checkCudaErrors( cudaMemcpyAsync(h_vel.s[n], vel.s[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 			checkCudaErrors( cudaMemcpyAsync(h_vel.c[n], vel.c[n], sizeof(complex double)*gpu.nx[n]*NY*NZ2, cudaMemcpyDefault) );
 		}
-
+		
 		// Write data to file
 	  write3Dfields_mgpu(gpu, 0, 'u', h_vel.u);
 		write3Dfields_mgpu(gpu, 0, 'v', h_vel.v);
@@ -464,7 +463,11 @@ void loadData(gpudata gpu, const char *name, double **var)
 { // Function to read in velocity data into multiple GPUs
 
 	int i, j, k, n, idx, N;
+	char DataLocation[256]; 
 	char title[256];
+	
+	// Default
+	snprintf(DataLocation, sizeof(DataLocation), "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0",name);
 	
 	snprintf(title, sizeof(title), DataLocation, name);
 	printf("Importing data from %s \n", title);

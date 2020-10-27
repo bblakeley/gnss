@@ -62,6 +62,7 @@ void allocate_memory(){
 	h_vel.vh = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
 	h_vel.wh = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
 	h_vel.sh = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
+	h_vel.ch = (cufftDoubleComplex **)malloc(sizeof(cufftDoubleComplex *)*nGPUs);
 
   cudaHostAlloc((void**)&vel, sizeof(fielddata), cudaHostAllocMapped);
 	cudaHostAlloc((void**)&vel.uh, 		 nGPUs*sizeof(cufftDoubleComplex *), cudaHostAllocMapped);
@@ -103,6 +104,7 @@ void allocate_memory(){
 		h_vel.vh[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
 		h_vel.wh[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
 		h_vel.sh[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
+		h_vel.ch[n] = (cufftDoubleComplex *)malloc(sizeof(cufftDoubleComplex)*gpu.nx[n]*NY*NZ2);
 
 		checkCudaErrors( cudaMalloc((void **)&grid.kx[n], sizeof(double)*NX ) );
 		checkCudaErrors( cudaMalloc((void **)&grid.ky[n], sizeof(double)*NY ) );
@@ -157,6 +159,7 @@ void allocate_memory(){
 		h_vel.v = (cufftDoubleReal **)h_vel.vh;
 		h_vel.w = (cufftDoubleReal **)h_vel.wh;
 		h_vel.s = (cufftDoubleReal **)h_vel.sh;
+		h_vel.c = (cufftDoubleReal **)h_vel.ch;
 		
 		vel.u = (cufftDoubleReal **)vel.uh;
 		vel.v = (cufftDoubleReal **)vel.vh;
