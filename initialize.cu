@@ -303,7 +303,7 @@ void random_normal(double *val, double mu, double sigma){
 void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fielddata vel, fielddata rhs)
 {
 	int n,i,j,jj,k,idx,idx_g,idxp,nbins,bin;
-	double kxmax,kymax,kzmax,kmax,dkx,dky,dkz,dk,ksq,sigma,pertrms,pertband,pertpeak,ke,rms;
+	double kxmax,kymax,kzmax,kmax,dkx,dky,dkz,dk,ksq,sigma,pertrms,ke,rms;//,pertband,pertpeak
 	double val[2];
 	double *energy,*kvec,*kx,*ky,*kz;
 	int *S;
@@ -340,8 +340,8 @@ void generateNoise(fftdata fft, gpudata gpu, griddata grid, fielddata h_vel, fie
 	checkCudaErrors( cudaMemcpyAsync(kz, grid.kz[0], sizeof(double)*NZ, cudaMemcpyDefault) );
 	
 	// Set energy spectrum	
-	pertpeak = 6.0;
-	pertband = 20.0;
+	//pertpeak = 6.0;
+	//pertband = 20.0;
 	pertrms = 1.0;
 	// Assign energy to wavenumber bins
 	for(i = 0; i<nbins; ++i){

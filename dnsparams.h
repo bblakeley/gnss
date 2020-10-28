@@ -18,11 +18,11 @@
 #define LZ (2.0*PI)
 #define DX (LX/NX)
 #define n_checkpoint 1000		// Number of steps to take between saving full 3D fields for checkpointing
-#define n_vis 100	// Number of timesteps to take between saving 2D slices of field data
-#define n_stats 100		// Number of timesteps to take between calculating stats data
-#define dt .002 	// Timestep
+#define n_vis 50	// Number of timesteps to take between saving 2D slices of field data
+#define n_stats 50		// Number of timesteps to take between calculating stats data
+#define dt .003 	// Timestep
 #define nt 15000		// Total number of timesteps to take in the simulation
-#define H (LY/6.0)
+#define H (LY/4.0)
 #define theta (H/35.0)
 #define theta_s (H/35.0)
 #define theta_c (H/35.0)
@@ -34,9 +34,11 @@
 // #define alias_filter (2.0/3.0)			// De-alias using the 2/3 truncation rule
 #define alias_filter (15.0/32.0)*2.0			// De-alias using the 15/32 rule (Weirong's thesis)
 #define pert_amp 0.01
-#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/temporal-jet/"
+#define pertpeak 4.0
+#define pertband 12.0
+#define rootdir "/home/bblakeley/Documents/Research/GNSS/test/diffusiophoresis/"
 //#define sim_name "isotropic_spectral_initialization_test_nu%1.4f_Sc%1.2f_nx%d_ny%d_nz%d_lx%dpi_ly%dpi_lz%dpi_dt%.3f_1532filter/",nu,(double)Sc,NX,NY,NZ,(int)(LX/PI),(int)(LY/PI),(int)(LZ/PI),(double)dt
-#define sim_name "pert%0.2f_%dH_Re%d_Sc%1.1f_Scc%1.1f_nx%d_ny%d_nz%d_dt%.3f/",(double)pert_amp,(int)(LY/H),(int)Re,(double)Sc,(double)Sc_c,NX,NY,NZ,(double)dt
+#define sim_name "pert%0.2f_%dH_Re%d_Sc%1.1f_Scc%1.1f_nx%d_ny%d_nz%d_dt%.3f_peak%d_band%d/",(double)pert_amp,(int)(LY/H),(int)Re,(double)Sc,(double)Sc_c,NX,NY,NZ,(double)dt,(int)pertpeak,(int)pertband
 //#define DataLocation "/home/bblakeley/Documents/Research/DNS_Data/Flamelet_Data/R2/%s.0"
 #define RAD 1
 
